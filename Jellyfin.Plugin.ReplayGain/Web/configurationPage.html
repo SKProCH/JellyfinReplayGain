@@ -1,36 +1,40 @@
-<div data-role="page" class="page type-interior pluginConfigurationPage">
+<div class="page type-interior pluginConfigurationPage" data-role="page">
     <div class="content-primary">
         <form class="replayGainConfigForm">
             <div class="verticalSection verticalSection-padding">
                 <h2 class="sectionTitle">ReplayGain</h2>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label>
-                        <input is="emby-checkbox" type="checkbox" id="enabled" />
+                        <input id="enabled" is="emby-checkbox" type="checkbox"/>
                         <span>Enable ReplayGain normalization</span>
                     </label>
-                    <div class="fieldDescription">Applies track ReplayGain while Jellyfin transcodes audio. Direct Play and Remux are unaffected.</div>
+                    <div class="fieldDescription">Applies track ReplayGain while Jellyfin transcodes audio. Direct Play
+                        and Remux are unaffected.
+                    </div>
                 </div>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label>
-                        <input is="emby-checkbox" type="checkbox" id="useLoudnorm" />
+                        <input id="useLoudnorm" is="emby-checkbox" type="checkbox"/>
                         <span>Use two-pass loudnorm analysis</span>
                     </label>
-                    <div class="fieldDescription">Uses the background ReplayGain loudnorm task when measurements are available. Jellyfin LUFS gain remains the fallback.</div>
+                    <div class="fieldDescription">Uses the background ReplayGain loudnorm task when measurements are
+                        available. Jellyfin LUFS gain remains the fallback.
+                    </div>
                 </div>
                 <div class="inputContainer">
-                    <input is="emby-input" type="number" step="0.1" id="integratedLoudness" />
+                    <input id="integratedLoudness" is="emby-input" step="0.1" type="number"/>
                     <div class="fieldDescription">Target integrated loudness (LUFS)</div>
                 </div>
                 <div class="inputContainer">
-                    <input is="emby-input" type="number" step="0.1" id="truePeak" />
+                    <input id="truePeak" is="emby-input" step="0.1" type="number"/>
                     <div class="fieldDescription">Target true peak (dBTP)</div>
                 </div>
                 <div class="inputContainer">
-                    <input is="emby-input" type="number" step="0.1" id="loudnessRange" />
+                    <input id="loudnessRange" is="emby-input" step="0.1" type="number"/>
                     <div class="fieldDescription">Target loudness range (LU)</div>
                 </div>
                 <div>
-                    <button is="emby-button" type="submit" class="raised button-submit block emby-button">Save</button>
+                    <button class="raised button-submit block emby-button" is="emby-button" type="submit">Save</button>
                 </div>
             </div>
         </form>
