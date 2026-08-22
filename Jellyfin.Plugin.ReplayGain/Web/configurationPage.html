@@ -1,0 +1,38 @@
+<div data-role="page" class="page type-interior pluginConfigurationPage">
+    <div class="content-primary">
+        <form class="replayGainConfigForm">
+            <div class="verticalSection verticalSection-padding">
+                <h2 class="sectionTitle">ReplayGain</h2>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="enabled" />
+                        <span>Enable ReplayGain normalization</span>
+                    </label>
+                    <div class="fieldDescription">Applies track ReplayGain while Jellyfin transcodes audio. Direct Play and Remux are unaffected.</div>
+                </div>
+                <div>
+                    <button is="emby-button" type="submit" class="raised button-submit block emby-button">Save</button>
+                </div>
+            </div>
+        </form>
+    </div>
+    <script>
+        (function () {
+            var page = document.querySelector('.replayGainConfigForm').closest('.pluginConfigurationPage');
+            page.addEventListener('pageshow', function () {
+                ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
+                    page.querySelector('#enabled').checked = config.Enabled === true;
+                });
+            });
+            page.querySelector('.replayGainConfigForm').addEventListener('submit', function (event) {
+                event.preventDefault();
+                ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
+                    config.Enabled = page.querySelector('#enabled').checked;
+                    return ApiClient.updatePluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91', config);
+                }).then(function () {
+                    Dashboard.processPluginConfigurationUpdateResult();
+                });
+            });
+        })();
+    </script>
+</div>

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Jellyfin.Plugin.ReplayGain/Jellyfin.Plugin.ReplayGain.csproj" />
+  <Project Path="Jellyfin.Plugin.ReplayGain.Tests/Jellyfin.Plugin.ReplayGain.Tests.csproj" />
+</Solution>
