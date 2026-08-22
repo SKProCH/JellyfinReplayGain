@@ -3,19 +3,24 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
+using MediaBrowser.Model.Tasks;
+using Jellyfin.Plugin.ReplayGain.Loudnorm;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.ReplayGain;
 
 public sealed class ReplayGainPlugin : BasePlugin<PluginConfiguration>, IHasWebPages {
     private readonly ILogger<ReplayGainPlugin> _logger;
+    private readonly ITaskManager _taskManager;
 
     public ReplayGainPlugin(
         IApplicationPaths applicationPaths,
         IXmlSerializer xmlSerializer,
-        ILogger<ReplayGainPlugin> logger)
+        ILogger<ReplayGainPlugin> logger,
+        ITaskManager taskManager)
         : base(applicationPaths, xmlSerializer) {
         _logger = logger;
+        _taskManager = taskManager;
         Instance = this;
     }
 
@@ -53,6 +58,9 @@ public sealed class ReplayGainPlugin : BasePlugin<PluginConfiguration>, IHasWebP
     public override void SaveConfiguration(PluginConfiguration config) {
         try {
             base.SaveConfiguration(config);
+            if (config.Enabled && config.UseLoudnorm) {
+                _taskManager.QueueIfNotRunning<LoudnormAnalyzer>();
+            }
         }
         catch (Exception ex) {
             _logger.LogError(ex,
