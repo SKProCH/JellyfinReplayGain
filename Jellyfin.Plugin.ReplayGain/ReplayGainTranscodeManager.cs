@@ -1,32 +1,41 @@
 using System.Text;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Streaming;
+using MediaBrowser.Controller.Library;
+using Jellyfin.Plugin.ReplayGain.Loudnorm;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.ReplayGain;
 
 public sealed class ReplayGainTranscodeManager : ITranscodeManager
 {
-    private const string ReplayGainFilter = "volume=replaygain=track";
     private readonly ITranscodeManager _inner;
     private readonly ILogger<ReplayGainTranscodeManager> _logger;
     private readonly Func<bool> _isEnabled;
+    private readonly ILibraryManager _libraryManager;
+    private readonly LoudnormCacheStore _loudnormCache;
 
     public ReplayGainTranscodeManager(
         ITranscodeManager inner,
         ILogger<ReplayGainTranscodeManager> logger,
+        ILibraryManager libraryManager,
+        LoudnormCacheStore loudnormCache,
         Func<bool>? isEnabled = null)
     {
         _inner = inner;
         _logger = logger;
         _isEnabled = isEnabled ?? (() => ReplayGainPlugin.IsEnabled);
+        _libraryManager = libraryManager;
+        _loudnormCache = loudnormCache;
     }
 
     public TranscodingJob? GetTranscodingJob(string playSessionId) => _inner.GetTranscodingJob(playSessionId);
 
-    public TranscodingJob? GetTranscodingJob(string path, TranscodingJobType type) => _inner.GetTranscodingJob(path, type);
+    public TranscodingJob? GetTranscodingJob(string path, TranscodingJobType type) =>
+        _inner.GetTranscodingJob(path, type);
 
-    public void PingTranscodingJob(string playSessionId, bool? isUserPaused) => _inner.PingTranscodingJob(playSessionId, isUserPaused);
+    public void PingTranscodingJob(string playSessionId, bool? isUserPaused) =>
+        _inner.PingTranscodingJob(playSessionId, isUserPaused);
 
     public Task KillTranscodingJobs(string deviceId, string? playSessionId, Func<string, bool> deleteFiles)
         => _inner.KillTranscodingJobs(deviceId, playSessionId, deleteFiles);
@@ -39,7 +48,8 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager
         double? percentComplete,
         long? bytesTranscoded,
         int? bitRate)
-        => _inner.ReportTranscodingProgress(job, state, transcodingPosition, framerate, percentComplete, bytesTranscoded, bitRate);
+        => _inner.ReportTranscodingProgress(job, state, transcodingPosition, framerate, percentComplete,
+            bytesTranscoded, bitRate);
 
     public Task<TranscodingJob> StartFfMpeg(
         StreamState state,
@@ -53,14 +63,63 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager
         var command = commandLineArguments;
         if (_isEnabled() && IsAudioTranscode(state))
         {
-            if (!ReplayGainCommandLine.TryAppend(commandLineArguments, out command))
+            var filter = GetFilter(state);
+            if (filter is not null && !ReplayGainCommandLine.TryAppendFilter(commandLineArguments, filter, out command))
             {
-                _logger.LogWarning("ReplayGain could not safely update the FFmpeg command; using the original command line");
+                _logger.LogWarning(
+                    "ReplayGain could not safely update the FFmpeg command; using the original command line");
             }
         }
 
-        return _inner.StartFfMpeg(state, outputPath, command, userId, transcodingJobType, cancellationTokenSource, workingDirectory);
+        return _inner.StartFfMpeg(state, outputPath, command, userId, transcodingJobType, cancellationTokenSource,
+            workingDirectory);
     }
+
+    private string? GetFilter(StreamState state)
+    {
+        var item = TryGetItem(state);
+        if (ReplayGainPlugin.Instance?.Configuration.UseLoudnorm == true
+            && item is not null
+            && !string.IsNullOrWhiteSpace(state.MediaPath)
+            && state.AudioStream is not null)
+        {
+            try
+            {
+                var config = ReplayGainPlugin.Instance.Configuration;
+                var signature = FileSignature.FromFile(state.MediaPath);
+                if (_loudnormCache.TryGet(state.MediaPath, signature, config.LoudnormIntegratedLoudness,
+                        config.LoudnormTruePeak, config.LoudnormLoudnessRange, out var result))
+                {
+                    var stream = result.Streams.FirstOrDefault(value => value.StreamIndex == state.AudioStream.Index);
+                    if (stream is not null)
+                    {
+                        return
+                            $"loudnorm=I={Format(config.LoudnormIntegratedLoudness)}:TP={Format(config.LoudnormTruePeak)}:LRA={Format(config.LoudnormLoudnessRange)}:measured_I={Format(stream.InputI)}:measured_TP={Format(stream.InputTp)}:measured_LRA={Format(stream.InputLra)}:measured_thresh={Format(stream.InputThresh)}:offset={Format(stream.TargetOffset)}:linear=true";
+                    }
+                }
+            }
+            catch (IOException)
+            {
+                // Fall back to Jellyfin's stored gain while the file is unavailable.
+            }
+        }
+
+        var gain = item?.NormalizationGain;
+        return gain.HasValue ? $"volume={Format(gain.Value)}dB" : null;
+    }
+
+    private MediaBrowser.Controller.Entities.BaseItem? TryGetItem(StreamState state)
+    {
+        if (state.MediaSource is null || !Guid.TryParse(state.MediaSource.Id, out var id))
+        {
+            return null;
+        }
+
+        return _libraryManager.GetItemById(id);
+    }
+
+    private static string Format(double value) =>
+        value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
 
     public void OnTranscodeEndRequest(TranscodingJob job) => _inner.OnTranscodeEndRequest(job);
 
@@ -82,7 +141,7 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager
 
     public static class ReplayGainCommandLine
     {
-        public static bool TryAppend(string commandLine, out string updatedCommandLine)
+        public static bool TryAppendFilter(string commandLine, string filter, out string updatedCommandLine)
         {
             updatedCommandLine = commandLine;
             if (string.IsNullOrWhiteSpace(commandLine))
@@ -109,26 +168,29 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager
                 }
 
                 var filterToken = tokens[i + 1];
-                if (filterToken.Value.Contains("replaygain=track", StringComparison.OrdinalIgnoreCase))
+                if (filterToken.Value.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
 
                 var existing = filterToken.Value;
-                var combined = existing + "," + ReplayGainFilter;
+                var combined = existing + "," + filter;
                 var original = commandLine.Substring(filterToken.Start, filterToken.Length);
                 var replacement = original.Replace(existing, combined, StringComparison.Ordinal);
-                updatedCommandLine = commandLine[..filterToken.Start] + replacement + commandLine[(filterToken.Start + filterToken.Length)..];
+                updatedCommandLine = commandLine[..filterToken.Start] + replacement +
+                                     commandLine[(filterToken.Start + filterToken.Length)..];
                 return true;
             }
 
-            var outputMarker = tokens.FirstOrDefault(token => string.Equals(token.Value, "-y", StringComparison.OrdinalIgnoreCase));
+            var outputMarker = tokens.FirstOrDefault(token =>
+                string.Equals(token.Value, "-y", StringComparison.OrdinalIgnoreCase));
             if (outputMarker is null)
             {
                 return false;
             }
 
-            updatedCommandLine = commandLine[..outputMarker.Start] + "-af \"" + ReplayGainFilter + "\" " + commandLine[outputMarker.Start..];
+            updatedCommandLine = commandLine[..outputMarker.Start] + "-af \"" + filter + "\" " +
+                                 commandLine[outputMarker.Start..];
             return true;
         }
 

@@ -1,10 +1,13 @@
 using AwesomeAssertions;
 using Jellyfin.Plugin.ReplayGain;
 using MediaBrowser.Controller.MediaEncoding;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Streaming;
 using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Jellyfin.Plugin.ReplayGain.Loudnorm;
+using MediaBrowser.Common.Configuration;
 
 namespace Jellyfin.Plugin.ReplayGain.Tests.Transcoding;
 
@@ -14,7 +17,7 @@ public sealed class ReplayGainTranscodeManagerTests
     public async Task StartFfMpeg_WhenDisabled_PassesOriginalCommand()
     {
         var inner = CreateInner(out var receivedCommands);
-        var manager = new ReplayGainTranscodeManager(inner.Object, NullLogger<ReplayGainTranscodeManager>.Instance, () => false);
+        var manager = CreateManager(inner.Object, false);
         var state = CreateAudioState(inner.Object);
         using var cancellation = new CancellationTokenSource();
 
@@ -24,23 +27,23 @@ public sealed class ReplayGainTranscodeManagerTests
     }
 
     [Fact]
-    public async Task StartFfMpeg_WhenEnabled_AddsReplayGainToAudioTranscode()
+    public async Task StartFfMpeg_WhenEnabledWithoutStoredGain_PassesOriginalCommand()
     {
         var inner = CreateInner(out var receivedCommands);
-        var manager = new ReplayGainTranscodeManager(inner.Object, NullLogger<ReplayGainTranscodeManager>.Instance, () => true);
+        var manager = CreateManager(inner.Object, true);
         var state = CreateAudioState(inner.Object);
         using var cancellation = new CancellationTokenSource();
 
         await manager.StartFfMpeg(state, "output.m4a", "-i input.flac -codec:a aac -y output.m4a", Guid.Empty, TranscodingJobType.Progressive, cancellation);
 
-        receivedCommands.Should().ContainSingle().Which.Should().Be("-i input.flac -codec:a aac -af \"volume=replaygain=track\" -y output.m4a");
+        receivedCommands.Should().ContainSingle().Which.Should().Be("-i input.flac -codec:a aac -y output.m4a");
     }
 
     [Fact]
     public async Task StartFfMpeg_WhenAudioIsCopied_PassesOriginalCommand()
     {
         var inner = CreateInner(out var receivedCommands);
-        var manager = new ReplayGainTranscodeManager(inner.Object, NullLogger<ReplayGainTranscodeManager>.Instance, () => true);
+        var manager = CreateManager(inner.Object, true);
         var state = CreateAudioState(inner.Object);
         state.OutputAudioCodec = "copy";
         using var cancellation = new CancellationTokenSource();
@@ -48,6 +51,18 @@ public sealed class ReplayGainTranscodeManagerTests
         await manager.StartFfMpeg(state, "output.m4a", "-i input.flac -codec:a copy", Guid.Empty, TranscodingJobType.Progressive, cancellation);
 
         receivedCommands.Should().ContainSingle().Which.Should().Be("-i input.flac -codec:a copy");
+    }
+
+    private static ReplayGainTranscodeManager CreateManager(ITranscodeManager inner, bool enabled)
+    {
+        var applicationPaths = new Mock<IApplicationPaths>();
+        applicationPaths.Setup(paths => paths.DataPath).Returns(Path.GetTempPath());
+        return new ReplayGainTranscodeManager(
+            inner,
+            NullLogger<ReplayGainTranscodeManager>.Instance,
+            new Mock<ILibraryManager>().Object,
+            new LoudnormCacheStore(applicationPaths.Object, NullLogger<LoudnormCacheStore>.Instance),
+            () => enabled);
     }
 
     private static Mock<ITranscodeManager> CreateInner(out List<string> receivedCommands)

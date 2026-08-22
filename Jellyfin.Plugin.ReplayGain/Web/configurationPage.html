@@ -10,6 +10,25 @@
                     </label>
                     <div class="fieldDescription">Applies track ReplayGain while Jellyfin transcodes audio. Direct Play and Remux are unaffected.</div>
                 </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="useLoudnorm" />
+                        <span>Use two-pass loudnorm analysis</span>
+                    </label>
+                    <div class="fieldDescription">Uses the background ReplayGain loudnorm task when measurements are available. Jellyfin LUFS gain remains the fallback.</div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" step="0.1" id="integratedLoudness" />
+                    <div class="fieldDescription">Target integrated loudness (LUFS)</div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" step="0.1" id="truePeak" />
+                    <div class="fieldDescription">Target true peak (dBTP)</div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" step="0.1" id="loudnessRange" />
+                    <div class="fieldDescription">Target loudness range (LU)</div>
+                </div>
                 <div>
                     <button is="emby-button" type="submit" class="raised button-submit block emby-button">Save</button>
                 </div>
@@ -22,12 +41,20 @@
             page.addEventListener('pageshow', function () {
                 ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
                     page.querySelector('#enabled').checked = config.Enabled === true;
+                    page.querySelector('#useLoudnorm').checked = config.UseLoudnorm === true;
+                    page.querySelector('#integratedLoudness').value = config.LoudnormIntegratedLoudness ?? -16;
+                    page.querySelector('#truePeak').value = config.LoudnormTruePeak ?? -1.5;
+                    page.querySelector('#loudnessRange').value = config.LoudnormLoudnessRange ?? 11;
                 });
             });
             page.querySelector('.replayGainConfigForm').addEventListener('submit', function (event) {
                 event.preventDefault();
                 ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
                     config.Enabled = page.querySelector('#enabled').checked;
+                    config.UseLoudnorm = page.querySelector('#useLoudnorm').checked;
+                    config.LoudnormIntegratedLoudness = Number(page.querySelector('#integratedLoudness').value);
+                    config.LoudnormTruePeak = Number(page.querySelector('#truePeak').value);
+                    config.LoudnormLoudnessRange = Number(page.querySelector('#loudnessRange').value);
                     return ApiClient.updatePluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91', config);
                 }).then(function () {
                     Dashboard.processPluginConfigurationUpdateResult();

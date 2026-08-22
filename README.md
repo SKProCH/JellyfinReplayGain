@@ -1,11 +1,12 @@
 # ReplayGain Plugin
 
-This separate Jellyfin plugin adds FFmpeg track ReplayGain normalization to audio transcoding.
+This separate Jellyfin plugin adds audio normalization to FFmpeg transcoding.
 
 - Disabled by default; enable it from the plugin configuration page.
 - Direct Play and Remux playback are unaffected.
-- ReplayGain is applied only when Jellyfin invokes FFmpeg to transcode audio.
-- The FFmpeg build must support `volume=replaygain=track`.
-- Track gain is used; album gain is not selected.
+- By default, the plugin uses Jellyfin's stored `NormalizationGain` value from its LUFS scan.
+- Optionally, a scheduled background task can analyze all audio streams with two-pass `loudnorm`.
+- Until a loudnorm result is available, Jellyfin's `NormalizationGain` remains the fallback.
+- Direct Play and Remux playback are unaffected.
 
-The source audio must contain ReplayGain metadata for FFmpeg to calculate a gain value. The plugin does not scan or rewrite media files.
+The plugin does not rewrite media files or ReplayGain tags. Loudnorm measurements are stored in Jellyfin's data directory as `ReplayGain.loudnorm.json`.
