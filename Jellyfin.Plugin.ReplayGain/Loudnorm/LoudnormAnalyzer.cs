@@ -86,8 +86,11 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
         var audioStreams = item.GetMediaStreams()
             .Where(stream => stream.Type == MediaStreamType.Audio)
             .ToArray();
-        if (audioStreams.Length == 0 || _cache.TryGet(path, signature, config.LoudnormIntegratedLoudness,
-                config.LoudnormTruePeak, config.LoudnormLoudnessRange, out _)) {
+        var streamSignatures = audioStreams
+            .Select(CreateSignature)
+            .ToArray();
+        if (audioStreams.Length == 0 || _cache.TryGet(path, signature, streamSignatures,
+                config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange, out _)) {
             return;
         }
 
@@ -116,8 +119,8 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
                 return;
             }
 
-            _cache.Put(path, signature, config.LoudnormIntegratedLoudness, config.LoudnormTruePeak,
-                config.LoudnormLoudnessRange, results);
+            _cache.Put(path, signature, streamSignatures, config.LoudnormIntegratedLoudness,
+                config.LoudnormTruePeak, config.LoudnormLoudnessRange, results);
         }
         catch (IOException ex) {
             _logger.LogDebug(ex, "Could not save loudnorm result for {Path}", path);
@@ -130,6 +133,14 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             $":TP={Format(config.LoudnormTruePeak)}" +
             $":LRA={Format(config.LoudnormLoudnessRange)}" +
             $":print_format=json[norm{index}]";
+
+        static AudioStreamSignature CreateSignature(MediaStream stream) => new() {
+            Index = stream.Index,
+            Codec = stream.Codec,
+            Language = stream.Language,
+            Channels = stream.Channels,
+            SampleRate = stream.SampleRate
+        };
     }
 
     private async Task<string> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken) {

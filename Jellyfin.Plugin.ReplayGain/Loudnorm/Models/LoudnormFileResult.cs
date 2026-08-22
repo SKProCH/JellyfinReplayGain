@@ -11,5 +11,7 @@ public sealed class LoudnormFileResult {
 
     public double LoudnessRange { get; set; }
 
+    public List<AudioStreamSignature> AudioStreams { get; set; } = [];
+
     public List<LoudnormStreamResult> Streams { get; set; } = [];
 }

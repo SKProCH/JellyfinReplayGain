@@ -6,6 +6,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Streaming;
+using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.ReplayGain;
@@ -101,12 +102,30 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
             try {
                 var config = ReplayGainPlugin.Instance.Configuration;
                 var signature = FileSignature.FromFile(state.MediaPath);
-                if (_loudnormCache.TryGet(state.MediaPath, signature, config.LoudnormIntegratedLoudness,
-                        config.LoudnormTruePeak, config.LoudnormLoudnessRange, out var result)) {
+                var streamSignatures = item.GetMediaStreams()
+                    .Where(value => value.Type == MediaStreamType.Audio)
+                    .Select(value => new AudioStreamSignature {
+                        Index = value.Index,
+                        Codec = value.Codec,
+                        Language = value.Language,
+                        Channels = value.Channels,
+                        SampleRate = value.SampleRate
+                    })
+                    .ToArray();
+                if (_loudnormCache.TryGet(state.MediaPath, signature, streamSignatures,
+                        config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange,
+                        out var result)) {
                     var stream = result.Streams.FirstOrDefault(value => value.StreamIndex == state.AudioStream.Index);
                     if (stream is not null) {
-                        return
-                            $"loudnorm=I={Format(config.LoudnormIntegratedLoudness)}:TP={Format(config.LoudnormTruePeak)}:LRA={Format(config.LoudnormLoudnessRange)}:measured_I={Format(stream.InputI)}:measured_TP={Format(stream.InputTp)}:measured_LRA={Format(stream.InputLra)}:measured_thresh={Format(stream.InputThresh)}:offset={Format(stream.TargetOffset)}:linear=true";
+                        return $"loudnorm=I={Format(config.LoudnormIntegratedLoudness)}" +
+                               $":TP={Format(config.LoudnormTruePeak)}" +
+                               $":LRA={Format(config.LoudnormLoudnessRange)}" +
+                               $":measured_I={Format(stream.InputI)}" +
+                               $":measured_TP={Format(stream.InputTp)}" +
+                               $":measured_LRA={Format(stream.InputLra)}" +
+                               $":measured_thresh={Format(stream.InputThresh)}" +
+                               $":offset={Format(stream.TargetOffset)}" +
+                               $":linear=true";
                     }
                 }
             }

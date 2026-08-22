@@ -18,13 +18,14 @@ public sealed class LoudnormCacheStore {
         _cache = Load();
     }
 
-    public bool TryGet(string path, FileSignature signature, double integratedLoudness, double truePeak,
-        double loudnessRange, out LoudnormFileResult result) {
+    public bool TryGet(string path, FileSignature signature, IReadOnlyList<AudioStreamSignature> audioStreams,
+        double integratedLoudness, double truePeak, double loudnessRange, out LoudnormFileResult result) {
         var key = Path.GetFullPath(path);
         lock (_gate) {
             if (_cache.Files.TryGetValue(key, out result!)
                 && result.Length == signature.Length
                 && result.LastWriteTimeUtc == signature.LastWriteTimeUtc
+                && result.AudioStreams.SequenceEqual(audioStreams)
                 && result.IntegratedLoudness == integratedLoudness
                 && result.TruePeak == truePeak
                 && result.LoudnessRange == loudnessRange) {
@@ -36,13 +37,15 @@ public sealed class LoudnormCacheStore {
         return false;
     }
 
-    public void Put(string path, FileSignature signature, double integratedLoudness, double truePeak,
-        double loudnessRange, IReadOnlyList<LoudnormStreamResult> streams) {
+    public void Put(string path, FileSignature signature, IReadOnlyList<AudioStreamSignature> audioStreams,
+        double integratedLoudness, double truePeak, double loudnessRange,
+        IReadOnlyList<LoudnormStreamResult> streams) {
         var key = Path.GetFullPath(path);
         lock (_gate) {
             _cache.Files[key] = new LoudnormFileResult {
                 Length = signature.Length,
                 LastWriteTimeUtc = signature.LastWriteTimeUtc,
+                AudioStreams = audioStreams.ToList(),
                 IntegratedLoudness = integratedLoudness,
                 TruePeak = truePeak,
                 LoudnessRange = loudnessRange,
