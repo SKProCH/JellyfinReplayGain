@@ -124,6 +124,13 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
                     out var result)) {
                 var stream = result.Streams.FirstOrDefault(value => value.StreamIndex == state.AudioStream.Index);
                 if (stream is not null) {
+                    if (config.PreserveDynamicRange) {
+                        var gain = config.LoudnormIntegratedLoudness - stream.InputI;
+                        return double.IsFinite(gain) && gain != 0
+                            ? $"volume={Format(gain)}dB"
+                            : null;
+                    }
+
                     return $"loudnorm=I={Format(config.LoudnormIntegratedLoudness)}" +
                            $":TP={Format(config.LoudnormTruePeak)}" +
                            $":LRA={Format(config.LoudnormLoudnessRange)}" +

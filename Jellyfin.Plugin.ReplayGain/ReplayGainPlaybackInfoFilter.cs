@@ -76,7 +76,10 @@ public sealed class ReplayGainPlaybackInfoFilter(
                 if (selectedIndex.HasValue
                     && result.Streams.Any(stream => stream.StreamIndex == selectedIndex.Value))
                 {
-                    return true;
+                    var stream = result.Streams.First(stream => stream.StreamIndex == selectedIndex.Value);
+                    return !config.PreserveDynamicRange
+                        || double.IsFinite(config.LoudnormIntegratedLoudness - stream.InputI)
+                            && config.LoudnormIntegratedLoudness - stream.InputI != 0;
                 }
             }
         }

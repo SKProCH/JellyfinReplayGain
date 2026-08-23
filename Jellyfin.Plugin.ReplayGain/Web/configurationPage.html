@@ -15,6 +15,16 @@
                 <div class="fieldDescription">Uses background two-pass FFmpeg loudnorm analysis for audio streams.
                     Direct Play is disabled only after a valid measurement is available.
                 </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input id="preserveDynamicRange" is="emby-checkbox" type="checkbox"/>
+                        <span>Preserve dynamic range</span>
+                    </label>
+                    <div class="fieldDescription">Uses a fixed volume adjustment calculated from the measured
+                        integrated loudness instead of loudnorm processing. This does not compress the dynamic range,
+                        but it does not limit true peaks, so clipping or peaks above the configured target may occur.
+                    </div>
+                </div>
                 <div class="inputContainer">
                     <input id="integratedLoudness" is="emby-input" step="0.1" type="number"/>
                     <div class="fieldDescription">Target integrated loudness (LUFS)</div>
@@ -39,6 +49,7 @@
             page.addEventListener('pageshow', function () {
                 ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
                     page.querySelector('#enabled').checked = config.Enabled === true;
+                    page.querySelector('#preserveDynamicRange').checked = config.PreserveDynamicRange === true;
                     page.querySelector('#integratedLoudness').value = config.LoudnormIntegratedLoudness ?? -16;
                     page.querySelector('#truePeak').value = config.LoudnormTruePeak ?? -1.5;
                     page.querySelector('#loudnessRange').value = config.LoudnormLoudnessRange ?? 11;
@@ -48,6 +59,7 @@
                 event.preventDefault();
                 ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
                     config.Enabled = page.querySelector('#enabled').checked;
+                    config.PreserveDynamicRange = page.querySelector('#preserveDynamicRange').checked;
                     config.LoudnormIntegratedLoudness = Number(page.querySelector('#integratedLoudness').value);
                     config.LoudnormTruePeak = Number(page.querySelector('#truePeak').value);
                     config.LoudnormLoudnessRange = Number(page.querySelector('#loudnessRange').value);
