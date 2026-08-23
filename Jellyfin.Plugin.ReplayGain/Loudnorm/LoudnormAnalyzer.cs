@@ -75,6 +75,7 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             ReplayGainPlugin.Instance.Configuration.LoudnormTruePeak, ReplayGainPlugin.Instance.Configuration.LoudnormLoudnessRange,
             ReplayGainPlugin.Instance.Configuration.PreserveDynamicRange);
 
+        progress.Report(0);
         for (var index = 0; index < items.Length; index++) {
             cancellationToken.ThrowIfCancellationRequested();
             summary.Add(await AnalyzeIfNeededAsync(items[index], cancellationToken).ConfigureAwait(false));
@@ -114,10 +115,9 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             return AnalysisOutcome.Cached;
         }
 
-        _logger.LogDebug(
-            "Starting loudnorm analysis for {Path}: {StreamCount} audio stream(s), target I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU, preserve dynamic range {PreserveDynamicRange}",
-            path, audioStreams.Length, config.LoudnormIntegratedLoudness, config.LoudnormTruePeak,
-            config.LoudnormLoudnessRange, config.PreserveDynamicRange);
+        _logger.LogInformation(
+            "Starting loudnorm analysis for {Path}: {StreamCount} audio stream(s), target I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU",
+            path, audioStreams.Length, config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange);
 
         var filters = audioStreams.Select(ComposeFilter);
         var arguments = new List<string>
@@ -183,7 +183,7 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             process.StartInfo.ArgumentList.Add(argument);
         }
 
-        _logger.LogDebug("Starting loudnorm analysis with {Encoder}", _mediaEncoder.EncoderPath);
+        _logger.LogDebug("Starting loudnorm analysis with {Encoder} {Arguments}", _mediaEncoder.EncoderPath, arguments);
         process.Start();
         var error = process.StandardError.ReadToEndAsync(cancellationToken);
         var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
