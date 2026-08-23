@@ -121,7 +121,7 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
                 .ToArray();
             if (_loudnormCache.TryGet(state.MediaPath, signature, streamSignatures,
                     config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange,
-                    out var result)) {
+                    config.PreserveDynamicRange, out var result)) {
                 var stream = result.Streams.FirstOrDefault(value => value.StreamIndex == state.AudioStream.Index);
                 if (stream is not null) {
                     if (config.PreserveDynamicRange) {

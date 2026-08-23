@@ -2,6 +2,7 @@ using System.Text.Json;
 using Jellyfin.Plugin.ReplayGain.Loudnorm.Models;
 using MediaBrowser.Common.Configuration;
 using Microsoft.Extensions.Logging;
+// ReSharper disable CompareOfFloatsByEqualityOperator
 
 namespace Jellyfin.Plugin.ReplayGain.Loudnorm;
 
@@ -19,16 +20,18 @@ public sealed class LoudnormCacheStore {
     }
 
     public bool TryGet(string path, FileSignature signature, IReadOnlyList<AudioStreamSignature> audioStreams,
-        double integratedLoudness, double truePeak, double loudnessRange, out LoudnormFileResult result) {
+        double integratedLoudness, double truePeak, double loudnessRange, bool ignoreTargets,
+        out LoudnormFileResult result) {
         var key = Path.GetFullPath(path);
         lock (_gate) {
             if (_cache.Files.TryGetValue(key, out result!)
                 && result.Length == signature.Length
                 && result.LastWriteTimeUtc == signature.LastWriteTimeUtc
                 && result.AudioStreams.SequenceEqual(audioStreams)
-                && result.IntegratedLoudness == integratedLoudness
-                && result.TruePeak == truePeak
-                && result.LoudnessRange == loudnessRange) {
+                && (ignoreTargets
+                    || result.IntegratedLoudness == integratedLoudness
+                    && result.TruePeak == truePeak
+                    && result.LoudnessRange == loudnessRange)) {
                 return true;
             }
         }

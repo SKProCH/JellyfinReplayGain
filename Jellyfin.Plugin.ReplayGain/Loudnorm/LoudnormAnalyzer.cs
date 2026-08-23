@@ -90,7 +90,8 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             .Select(CreateSignature)
             .ToArray();
         if (audioStreams.Length == 0 || _cache.TryGet(path, signature, streamSignatures,
-                config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange, out _)) {
+                config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange,
+                config.PreserveDynamicRange, out _)) {
             return;
         }
 
