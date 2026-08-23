@@ -127,4 +127,50 @@ public sealed class LoudnessCacheStoreTests
             directory.Delete(true);
         }
     }
+
+    [Fact]
+    public void TryGet_WhenEbur128IsRequested_UsesLoudnormMeasurement()
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            var filePath = Path.Combine(directory.FullName, "sample.mkv");
+            File.WriteAllText(filePath, "sample");
+            var paths = new Mock<IApplicationPaths>();
+            paths.Setup(value => value.DataPath).Returns(directory.FullName);
+            var store = new LoudnessCacheStore(paths.Object, NullLogger<LoudnessCacheStore>.Instance);
+            var signature = FileSignature.FromFile(filePath);
+            var streams = new[] { new AudioStreamSignature { Index = 1, Codec = "aac" } };
+            store.Put(filePath, signature, streams, [new LoudnessStreamResult { StreamIndex = 1 }], MeasurementMethod.Loudnorm);
+
+            store.TryGet(filePath, signature, streams, MeasurementMethod.Ebur128, out _).Should().BeTrue();
+        }
+        finally
+        {
+            directory.Delete(true);
+        }
+    }
+
+    [Fact]
+    public void TryGet_WhenLoudnormIsRequested_DoesNotUseEbur128Measurement()
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            var filePath = Path.Combine(directory.FullName, "sample.mkv");
+            File.WriteAllText(filePath, "sample");
+            var paths = new Mock<IApplicationPaths>();
+            paths.Setup(value => value.DataPath).Returns(directory.FullName);
+            var store = new LoudnessCacheStore(paths.Object, NullLogger<LoudnessCacheStore>.Instance);
+            var signature = FileSignature.FromFile(filePath);
+            var streams = new[] { new AudioStreamSignature { Index = 1, Codec = "aac" } };
+            store.Put(filePath, signature, streams, [new LoudnessStreamResult { StreamIndex = 1 }], MeasurementMethod.Ebur128);
+
+            store.TryGet(filePath, signature, streams, MeasurementMethod.Loudnorm, out _).Should().BeFalse();
+        }
+        finally
+        {
+            directory.Delete(true);
+        }
+    }
 }
