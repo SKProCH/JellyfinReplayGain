@@ -88,8 +88,8 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
                     }
                 }
 
-                if (ReplayGainCommandLine.TryAppendFilter(command, filter, out command)) {
-                    _logger.LogDebug("ReplayGain added {Filter} for stream {StreamIndex} in {Path}",
+                if (ReplayGainCommandLine.TryPrependFilter(command, filter, out command)) {
+                    _logger.LogDebug("ReplayGain prepended {Filter} before Jellyfin audio filters for stream {StreamIndex} in {Path}",
                         filter, state.AudioStream?.Index, state.MediaPath);
                 }
                 else {
@@ -139,13 +139,18 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
                 var stream = result.Streams.FirstOrDefault(value => value.StreamIndex == state.AudioStream.Index);
                 if (stream is not null) {
                     if (config.PreserveDynamicRange) {
-                        var gain = config.LoudnormIntegratedLoudness - stream.InputI;
+                        var gain = CalculatePeakSafeGain(
+                            config.LoudnormIntegratedLoudness,
+                            config.LoudnormTruePeak,
+                            stream.InputI,
+                            stream.InputTp);
                         if (double.IsFinite(gain) && gain != 0) {
                             var normalizationFilter = $"volume={Format(gain)}dB";
                             _logger.LogDebug(
-                                "ReplayGain selected constant-gain normalization for {Path}, stream {StreamIndex}: measured {MeasuredI} LUFS, target {TargetI} LUFS, gain {Gain} dB",
+                                "ReplayGain selected peak-safe constant-gain normalization for {Path}, stream {StreamIndex}: measured I {MeasuredI} LUFS, TP {MeasuredTp} dBTP, targets I {TargetI} LUFS, TP {TargetTp} dBTP, gain {Gain} dB",
                                 state.MediaPath, state.AudioStream.Index, Format(stream.InputI),
-                                Format(config.LoudnormIntegratedLoudness), Format(gain));
+                                Format(stream.InputTp), Format(config.LoudnormIntegratedLoudness),
+                                Format(config.LoudnormTruePeak), Format(gain));
                             return normalizationFilter;
                         }
 
@@ -164,9 +169,9 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
                                          $":measured_LRA={Format(stream.InputLra)}" +
                                          $":measured_thresh={Format(stream.InputThresh)}" +
                                          $":offset={Format(stream.TargetOffset)}" +
-                                         $":linear=true";
+                                         ":linear=true";
                     _logger.LogDebug(
-                        "ReplayGain selected linear loudnorm for {Path}, stream {StreamIndex}: measured I {MeasuredI} LUFS, TP {MeasuredTp} dBTP, LRA {MeasuredLra} LU, targets I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU",
+                        "ReplayGain requested linear loudnorm for {Path}, stream {StreamIndex}; FFmpeg may fall back to dynamic normalization: measured I {MeasuredI} LUFS, TP {MeasuredTp} dBTP, LRA {MeasuredLra} LU, targets I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU",
                         state.MediaPath, state.AudioStream.Index, Format(stream.InputI), Format(stream.InputTp),
                         Format(stream.InputLra), Format(config.LoudnormIntegratedLoudness),
                         Format(config.LoudnormTruePeak), Format(config.LoudnormLoudnessRange));
@@ -188,6 +193,16 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
 
     private static string Format(double value) {
         return value.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
+    internal static double CalculatePeakSafeGain(
+        double targetIntegratedLoudness,
+        double targetTruePeak,
+        double measuredIntegratedLoudness,
+        double measuredTruePeak) {
+        return Math.Min(
+            targetIntegratedLoudness - measuredIntegratedLoudness,
+            targetTruePeak - measuredTruePeak);
     }
 
     private string GetAudioEncoder(StreamState state) {
@@ -235,7 +250,7 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
             return replacements.Count > 0;
         }
 
-        public static bool TryAppendFilter(string commandLine, string filter, out string updatedCommandLine) {
+        public static bool TryPrependFilter(string commandLine, string filter, out string updatedCommandLine) {
             updatedCommandLine = commandLine;
             if (string.IsNullOrWhiteSpace(commandLine)) {
                 return false;
@@ -261,7 +276,7 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
                 }
 
                 var existing = filterToken.Value;
-                var combined = existing + "," + filter;
+                var combined = filter + "," + existing;
                 var original = commandLine.Substring(filterToken.Start, filterToken.Length);
                 var replacement = original.Replace(existing, combined, StringComparison.Ordinal);
                 updatedCommandLine = commandLine[..filterToken.Start] + replacement +

@@ -80,7 +80,11 @@ public sealed class ReplayGainPlaybackInfoFilter(
                         return true;
                     }
 
-                    var gain = config.LoudnormIntegratedLoudness - stream.InputI;
+                    var gain = ReplayGainTranscodeManager.CalculatePeakSafeGain(
+                        config.LoudnormIntegratedLoudness,
+                        config.LoudnormTruePeak,
+                        stream.InputI,
+                        stream.InputTp);
                     var canApplyGain = double.IsFinite(gain) && gain != 0;
                     logger.LogDebug(
                         "ReplayGain {Decision} direct play for {Path}, stream {StreamIndex}: constant-gain mode, measured I {MeasuredI} LUFS, target {TargetI} LUFS, gain {Gain} dB",

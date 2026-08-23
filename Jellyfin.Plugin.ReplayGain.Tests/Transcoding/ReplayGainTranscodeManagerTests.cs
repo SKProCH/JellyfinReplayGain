@@ -1,6 +1,5 @@
 using Jellyfin.Plugin.ReplayGain.Loudnorm;
 using MediaBrowser.Common.Configuration;
-using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.IO;
@@ -13,6 +12,18 @@ using Moq;
 namespace Jellyfin.Plugin.ReplayGain.Tests.Transcoding;
 
 public sealed class ReplayGainTranscodeManagerTests {
+    [Fact]
+    public void CalculatePeakSafeGain_WhenLoudnessGainWouldExceedTruePeak_UsesPeakLimit() {
+        ReplayGainTranscodeManager.CalculatePeakSafeGain(-16, -1.5, -18.59, 0.05)
+            .Should().BeApproximately(-1.55, 0.001);
+    }
+
+    [Fact]
+    public void CalculatePeakSafeGain_WhenTruePeakHasHeadroom_UsesLoudnessGain() {
+        ReplayGainTranscodeManager.CalculatePeakSafeGain(-16, -1.5, -20, -10)
+            .Should().BeApproximately(4, 0.001);
+    }
+
     [Fact]
     public async Task StartFfMpeg_WhenDisabled_PassesOriginalCommand() {
         var inner = CreateInner(out var receivedCommands);
@@ -101,4 +112,5 @@ public sealed class ReplayGainTranscodeManagerTests {
             OutputAudioCodec = "aac"
         };
     }
+
 }
