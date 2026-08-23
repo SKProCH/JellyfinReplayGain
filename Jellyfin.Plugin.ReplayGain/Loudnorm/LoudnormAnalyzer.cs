@@ -109,9 +109,7 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             return AnalysisOutcome.NoAudioStreams;
         }
 
-        if (_cache.TryGet(path, signature, streamSignatures,
-                config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange,
-                config.PreserveDynamicRange, out _)) {
+        if (_cache.TryGet(path, signature, streamSignatures, out _)) {
             return AnalysisOutcome.Cached;
         }
 
@@ -145,8 +143,7 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
                 return AnalysisOutcome.Changed;
             }
 
-            _cache.Put(path, signature, streamSignatures, config.LoudnormIntegratedLoudness,
-                config.LoudnormTruePeak, config.LoudnormLoudnessRange, results);
+            _cache.Put(path, signature, streamSignatures, results);
             _logger.LogDebug("Saved loudnorm analysis for {Path}: {StreamCount} audio stream(s)", path, results.Count);
             return AnalysisOutcome.Analyzed;
         }
@@ -238,8 +235,7 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
                         InputI = statistics.InputI,
                         InputTp = statistics.InputTp,
                         InputLra = statistics.InputLra,
-                        InputThresh = statistics.InputThresh,
-                        TargetOffset = statistics.TargetOffset
+                        InputThresh = statistics.InputThresh
                     });
                 }
             }

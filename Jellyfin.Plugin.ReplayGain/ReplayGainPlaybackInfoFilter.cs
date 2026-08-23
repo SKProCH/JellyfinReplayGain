@@ -78,9 +78,7 @@ public sealed class ReplayGainPlaybackInfoFilter(
             })
             .ToArray();
         var signature = FileSignature.FromFile(mediaSource.Path);
-        if (!loudnormCache.TryGet(mediaSource.Path, signature, signatures,
-                config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange,
-                config.PreserveDynamicRange, out var result)) {
+        if (!loudnormCache.TryGet(mediaSource.Path, signature, signatures, out var result)) {
             reason = "no matching loudnorm cache entry exists";
             return false;
         }

@@ -11,5 +11,4 @@ public sealed class LoudnormStreamResult {
 
     public double InputThresh { get; set; }
 
-    public double TargetOffset { get; set; }
 }

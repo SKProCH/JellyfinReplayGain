@@ -9,7 +9,28 @@ namespace Jellyfin.Plugin.ReplayGain.Tests.Loudnorm;
 public sealed class LoudnormCacheStoreTests
 {
     [Fact]
-    public void TryGet_WhenTargetsChange_RequiresFreshAnalysisUnlessDynamicRangeIsPreserved()
+    public void Constructor_WhenLegacyTargetOffsetExists_RemovesItFromCache()
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            var cachePath = Path.Combine(directory.FullName, "ReplayGain.loudnorm.json");
+            File.WriteAllText(cachePath, "{\"Version\":1,\"Files\":{},\"target_offset\":0.45}");
+            var paths = new Mock<IApplicationPaths>();
+            paths.Setup(value => value.DataPath).Returns(directory.FullName);
+
+            _ = new LoudnormCacheStore(paths.Object, NullLogger<LoudnormCacheStore>.Instance);
+
+            File.ReadAllText(cachePath).Should().NotContain("target_offset");
+        }
+        finally
+        {
+            directory.Delete(true);
+        }
+    }
+
+    [Fact]
+    public void TryGet_WhenTargetsChange_ReusesMeasurement()
     {
         var directory = Directory.CreateTempSubdirectory();
         try
@@ -21,10 +42,9 @@ public sealed class LoudnormCacheStoreTests
             var store = new LoudnormCacheStore(paths.Object, NullLogger<LoudnormCacheStore>.Instance);
             var signature = FileSignature.FromFile(filePath);
             var streams = new[] { new AudioStreamSignature { Index = 1, Codec = "aac" } };
-            store.Put(filePath, signature, streams, -16, -1.5, 11, [new LoudnormStreamResult { StreamIndex = 1, InputI = -20 }]);
+            store.Put(filePath, signature, streams, [new LoudnormStreamResult { StreamIndex = 1, InputI = -20 }]);
 
-            store.TryGet(filePath, signature, streams, -14, -1.0, 8, false, out _).Should().BeFalse();
-            store.TryGet(filePath, signature, streams, -14, -1.0, 8, true, out _).Should().BeTrue();
+            store.TryGet(filePath, signature, streams, out _).Should().BeTrue();
         }
         finally
         {

@@ -121,7 +121,6 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
         if (item is not null
             && !string.IsNullOrWhiteSpace(state.MediaPath)
             && state.AudioStream is not null) {
-            var config = ReplayGainPlugin.Instance!.Configuration;
             var signature = FileSignature.FromFile(state.MediaPath);
             var streamSignatures = item.GetMediaStreams()
                 .Where(value => value.Type == MediaStreamType.Audio)
@@ -133,9 +132,8 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
                     SampleRate = value.SampleRate
                 })
                 .ToArray();
-            if (_loudnormCache.TryGet(state.MediaPath, signature, streamSignatures,
-                    config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange,
-                    config.PreserveDynamicRange, out var result)) {
+            var config = ReplayGainPlugin.Instance!.Configuration;
+            if (_loudnormCache.TryGet(state.MediaPath, signature, streamSignatures, out var result)) {
                 var stream = result.Streams.FirstOrDefault(value => value.StreamIndex == state.AudioStream.Index);
                 if (stream is not null) {
                     if (config.PreserveDynamicRange) {
@@ -165,11 +163,11 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
                                          $":TP={Format(config.LoudnormTruePeak)}" +
                                          $":LRA={Format(config.LoudnormLoudnessRange)}" +
                                          $":measured_I={Format(stream.InputI)}" +
-                                         $":measured_TP={Format(stream.InputTp)}" +
-                                         $":measured_LRA={Format(stream.InputLra)}" +
-                                         $":measured_thresh={Format(stream.InputThresh)}" +
-                                         $":offset={Format(stream.TargetOffset)}" +
-                                         ":linear=true";
+                                          $":measured_TP={Format(stream.InputTp)}" +
+                                          $":measured_LRA={Format(stream.InputLra)}" +
+                                          $":measured_thresh={Format(stream.InputThresh)}" +
+                                          ":offset=0.0" +
+                                          ":linear=true";
                     _logger.LogDebug(
                         "ReplayGain requested linear loudnorm for {Path}, stream {StreamIndex}; FFmpeg may fall back to dynamic normalization: measured I {MeasuredI} LUFS, TP {MeasuredTp} dBTP, LRA {MeasuredLra} LU, targets I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU",
                         state.MediaPath, state.AudioStream.Index, Format(stream.InputI), Format(stream.InputTp),

@@ -19,7 +19,4 @@ internal sealed class LoudnormJsonStatistics {
     [JsonConverter(typeof(LoudnormNumberConverter))]
     public double InputThresh { get; set; }
 
-    [JsonPropertyName("target_offset")]
-    [JsonConverter(typeof(LoudnormNumberConverter))]
-    public double TargetOffset { get; set; }
 }

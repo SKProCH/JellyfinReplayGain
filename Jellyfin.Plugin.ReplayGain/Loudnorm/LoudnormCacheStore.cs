@@ -20,18 +20,13 @@ public sealed class LoudnormCacheStore {
     }
 
     public bool TryGet(string path, FileSignature signature, IReadOnlyList<AudioStreamSignature> audioStreams,
-        double integratedLoudness, double truePeak, double loudnessRange, bool ignoreTargets,
         out LoudnormFileResult result) {
         var key = Path.GetFullPath(path);
         lock (_gate) {
             if (_cache.Files.TryGetValue(key, out result!)
                 && result.Length == signature.Length
                 && result.LastWriteTimeUtc == signature.LastWriteTimeUtc
-                && result.AudioStreams.SequenceEqual(audioStreams)
-                && (ignoreTargets
-                    || result.IntegratedLoudness == integratedLoudness
-                    && result.TruePeak == truePeak
-                    && result.LoudnessRange == loudnessRange)) {
+                && result.AudioStreams.SequenceEqual(audioStreams)) {
                 return true;
             }
         }
@@ -41,7 +36,6 @@ public sealed class LoudnormCacheStore {
     }
 
     public void Put(string path, FileSignature signature, IReadOnlyList<AudioStreamSignature> audioStreams,
-        double integratedLoudness, double truePeak, double loudnessRange,
         IReadOnlyList<LoudnormStreamResult> streams) {
         var key = Path.GetFullPath(path);
         lock (_gate) {
@@ -49,9 +43,6 @@ public sealed class LoudnormCacheStore {
                 Length = signature.Length,
                 LastWriteTimeUtc = signature.LastWriteTimeUtc,
                 AudioStreams = audioStreams.ToList(),
-                IntegratedLoudness = integratedLoudness,
-                TruePeak = truePeak,
-                LoudnessRange = loudnessRange,
                 Streams = streams.ToList()
             };
             Save(_cache);
@@ -61,7 +52,13 @@ public sealed class LoudnormCacheStore {
     private LoudnormCache Load() {
         try {
             if (File.Exists(_path)) {
-                return JsonSerializer.Deserialize<LoudnormCache>(File.ReadAllText(_path)) ?? new LoudnormCache();
+                var text = File.ReadAllText(_path);
+                var cache = JsonSerializer.Deserialize<LoudnormCache>(text) ?? new LoudnormCache();
+                if (text.Contains("\"target_offset\"", StringComparison.OrdinalIgnoreCase)) {
+                    Save(cache);
+                }
+
+                return cache;
             }
         }
         catch (Exception ex) {
