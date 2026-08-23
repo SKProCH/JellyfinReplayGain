@@ -11,7 +11,7 @@ public sealed class LoudnormPostScanTask : ILibraryPostScanTask {
     }
 
     public Task Run(IProgress<double> progress, CancellationToken cancellationToken) {
-        if (ReplayGainPlugin.IsEnabled && ReplayGainPlugin.Instance!.Configuration.UseLoudnorm) {
+        if (ReplayGainPlugin.IsEnabled) {
             _taskManager.QueueIfNotRunning<LoudnormAnalyzer>();
         }
 

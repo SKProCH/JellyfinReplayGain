@@ -1,7 +1,5 @@
 using Jellyfin.Plugin.ReplayGain.Loudnorm;
 using Jellyfin.Plugin.ReplayGain.Loudnorm.Models;
-using MediaBrowser.Controller.Entities;
-using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.MediaInfo;
@@ -12,7 +10,6 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.ReplayGain;
 
 public sealed class ReplayGainPlaybackInfoFilter(
-    ILibraryManager libraryManager,
     LoudnormCacheStore loudnormCache,
     ILogger<ReplayGainPlaybackInfoFilter> logger) : IAsyncActionFilter
 {
@@ -29,18 +26,12 @@ public sealed class ReplayGainPlaybackInfoFilter(
             return;
         }
 
-        var item = libraryManager.GetItemById<BaseItem>(itemId);
-        if (item is null)
-        {
-            return;
-        }
-
         var changed = false;
         foreach (var mediaSource in playbackInfo.MediaSources)
         {
             if (!mediaSource.SupportsDirectPlay
                 || mediaSource is { SupportsDirectStream: false, SupportsTranscoding: false }
-                || !RequiresNormalization(item, mediaSource))
+                || !RequiresNormalization(mediaSource))
             {
                 continue;
             }
@@ -55,17 +46,16 @@ public sealed class ReplayGainPlaybackInfoFilter(
         }
     }
 
-    internal bool RequiresNormalization(BaseItem item, MediaSourceInfo mediaSource)
+    internal bool RequiresNormalization(MediaSourceInfo mediaSource)
     {
         if (mediaSource.MediaStreams.All(stream => stream.Type != MediaStreamType.Audio))
         {
             return false;
         }
 
-        if (ReplayGainPlugin.Instance?.Configuration.UseLoudnorm == true
-            && !string.IsNullOrWhiteSpace(mediaSource.Path))
+        if (!string.IsNullOrWhiteSpace(mediaSource.Path))
         {
-            var config = ReplayGainPlugin.Instance.Configuration;
+            var config = ReplayGainPlugin.Instance!.Configuration;
             var signatures = mediaSource.MediaStreams
                 .Where(stream => stream.Type == MediaStreamType.Audio)
                 .Select(stream => new AudioStreamSignature {
@@ -91,7 +81,7 @@ public sealed class ReplayGainPlaybackInfoFilter(
             }
         }
 
-        return ReplayGainNormalization.GetEffectiveGain(item).HasValue;
+        return false;
     }
 
     private static bool TryGetPlaybackInfo(IActionResult? actionResult, out PlaybackInfoResponse playbackInfo)

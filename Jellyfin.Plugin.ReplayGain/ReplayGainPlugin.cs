@@ -58,7 +58,7 @@ public sealed class ReplayGainPlugin : BasePlugin<PluginConfiguration>, IHasWebP
     public override void SaveConfiguration(PluginConfiguration config) {
         try {
             base.SaveConfiguration(config);
-            if (config.Enabled && config.UseLoudnorm) {
+            if (config.Enabled) {
                 _taskManager.QueueIfNotRunning<LoudnormAnalyzer>();
             }
         }

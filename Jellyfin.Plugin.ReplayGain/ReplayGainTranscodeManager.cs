@@ -104,47 +104,40 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
 
     private string? GetFilter(StreamState state) {
         var item = TryGetItem(state);
-        if (ReplayGainPlugin.Instance?.Configuration.UseLoudnorm == true
-            && item is not null
+        if (item is not null
             && !string.IsNullOrWhiteSpace(state.MediaPath)
             && state.AudioStream is not null) {
-            try {
-                var config = ReplayGainPlugin.Instance.Configuration;
-                var signature = FileSignature.FromFile(state.MediaPath);
-                var streamSignatures = item.GetMediaStreams()
-                    .Where(value => value.Type == MediaStreamType.Audio)
-                    .Select(value => new AudioStreamSignature {
-                        Index = value.Index,
-                        Codec = value.Codec,
-                        Language = value.Language,
-                        Channels = value.Channels,
-                        SampleRate = value.SampleRate
-                    })
-                    .ToArray();
-                if (_loudnormCache.TryGet(state.MediaPath, signature, streamSignatures,
-                        config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange,
-                        out var result)) {
-                    var stream = result.Streams.FirstOrDefault(value => value.StreamIndex == state.AudioStream.Index);
-                    if (stream is not null) {
-                        return $"loudnorm=I={Format(config.LoudnormIntegratedLoudness)}" +
-                               $":TP={Format(config.LoudnormTruePeak)}" +
-                               $":LRA={Format(config.LoudnormLoudnessRange)}" +
-                               $":measured_I={Format(stream.InputI)}" +
-                               $":measured_TP={Format(stream.InputTp)}" +
-                               $":measured_LRA={Format(stream.InputLra)}" +
-                               $":measured_thresh={Format(stream.InputThresh)}" +
-                               $":offset={Format(stream.TargetOffset)}" +
-                               $":linear=true";
-                    }
+            var config = ReplayGainPlugin.Instance!.Configuration;
+            var signature = FileSignature.FromFile(state.MediaPath);
+            var streamSignatures = item.GetMediaStreams()
+                .Where(value => value.Type == MediaStreamType.Audio)
+                .Select(value => new AudioStreamSignature {
+                    Index = value.Index,
+                    Codec = value.Codec,
+                    Language = value.Language,
+                    Channels = value.Channels,
+                    SampleRate = value.SampleRate
+                })
+                .ToArray();
+            if (_loudnormCache.TryGet(state.MediaPath, signature, streamSignatures,
+                    config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange,
+                    out var result)) {
+                var stream = result.Streams.FirstOrDefault(value => value.StreamIndex == state.AudioStream.Index);
+                if (stream is not null) {
+                    return $"loudnorm=I={Format(config.LoudnormIntegratedLoudness)}" +
+                           $":TP={Format(config.LoudnormTruePeak)}" +
+                           $":LRA={Format(config.LoudnormLoudnessRange)}" +
+                           $":measured_I={Format(stream.InputI)}" +
+                           $":measured_TP={Format(stream.InputTp)}" +
+                           $":measured_LRA={Format(stream.InputLra)}" +
+                           $":measured_thresh={Format(stream.InputThresh)}" +
+                           $":offset={Format(stream.TargetOffset)}" +
+                           $":linear=true";
                 }
-            }
-            catch (IOException) {
-                // Fall back to Jellyfin's stored gain while the file is unavailable.
             }
         }
 
-        var gain = item is null ? null : ReplayGainNormalization.GetEffectiveGain(item);
-        return gain.HasValue ? $"volume={Format(gain.Value)}dB" : null;
+        return null;
     }
 
     private BaseItem? TryGetItem(StreamState state) {

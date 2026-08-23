@@ -53,7 +53,7 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
     }
 
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken) {
-        if (!ReplayGainPlugin.IsEnabled || !ReplayGainPlugin.Instance!.Configuration.UseLoudnorm) {
+        if (!ReplayGainPlugin.IsEnabled) {
             return;
         }
 

@@ -6,20 +6,14 @@
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label>
                         <input id="enabled" is="emby-checkbox" type="checkbox"/>
-                        <span>Enable ReplayGain normalization</span>
+                        <span>Enable loudnorm normalization</span>
                     </label>
-                    <div class="fieldDescription">Applies track ReplayGain while Jellyfin transcodes audio. Direct Play
-                        and Remux are unaffected.
+                    <div class="fieldDescription">Analyzes audio streams with FFmpeg loudnorm and applies normalization
+                        while Jellyfin transcodes audio. Direct Play remains available until analysis completes.
                     </div>
                 </div>
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label>
-                        <input id="useLoudnorm" is="emby-checkbox" type="checkbox"/>
-                        <span>Use two-pass loudnorm analysis</span>
-                    </label>
-                    <div class="fieldDescription">Uses the background ReplayGain loudnorm task when measurements are
-                        available. Jellyfin LUFS gain remains the fallback.
-                    </div>
+                <div class="fieldDescription">Uses background two-pass FFmpeg loudnorm analysis for audio streams.
+                    Direct Play is disabled only after a valid measurement is available.
                 </div>
                 <div class="inputContainer">
                     <input id="integratedLoudness" is="emby-input" step="0.1" type="number"/>
@@ -45,7 +39,6 @@
             page.addEventListener('pageshow', function () {
                 ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
                     page.querySelector('#enabled').checked = config.Enabled === true;
-                    page.querySelector('#useLoudnorm').checked = config.UseLoudnorm === true;
                     page.querySelector('#integratedLoudness').value = config.LoudnormIntegratedLoudness ?? -16;
                     page.querySelector('#truePeak').value = config.LoudnormTruePeak ?? -1.5;
                     page.querySelector('#loudnessRange').value = config.LoudnormLoudnessRange ?? 11;
@@ -55,7 +48,6 @@
                 event.preventDefault();
                 ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
                     config.Enabled = page.querySelector('#enabled').checked;
-                    config.UseLoudnorm = page.querySelector('#useLoudnorm').checked;
                     config.LoudnormIntegratedLoudness = Number(page.querySelector('#integratedLoudness').value);
                     config.LoudnormTruePeak = Number(page.querySelector('#truePeak').value);
                     config.LoudnormLoudnessRange = Number(page.querySelector('#loudnessRange').value);

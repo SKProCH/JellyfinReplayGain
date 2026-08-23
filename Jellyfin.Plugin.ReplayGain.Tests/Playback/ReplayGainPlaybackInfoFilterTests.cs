@@ -1,6 +1,5 @@
 using Jellyfin.Plugin.ReplayGain.Loudnorm;
 using MediaBrowser.Common.Configuration;
-using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -11,50 +10,42 @@ namespace Jellyfin.Plugin.ReplayGain.Tests.Playback;
 public sealed class ReplayGainPlaybackInfoFilterTests
 {
     [Fact]
-    public void RequiresNormalization_WhenTrackGainExists_ReturnsTrue()
+    public void RequiresNormalization_WhenLoudnormCacheIsMissing_ReturnsFalse()
     {
-        var item = new Audio { NormalizationGain = -7.25f };
         var source = CreateAudioSource();
         var filter = CreateFilter();
 
-        filter.RequiresNormalization(item, source).Should().BeTrue();
+        filter.RequiresNormalization(source).Should().BeFalse();
     }
 
     [Fact]
-    public void RequiresNormalization_WhenNoGainAndLoudnormDisabled_ReturnsFalse()
+    public void RequiresNormalization_WhenSourceHasNoPath_ReturnsFalse()
     {
-        var item = new Audio();
         var source = CreateAudioSource();
         var filter = CreateFilter();
 
-        filter.RequiresNormalization(item, source).Should().BeFalse();
+        filter.RequiresNormalization(source).Should().BeFalse();
     }
 
     [Fact]
     public void RequiresNormalization_WhenSourceHasNoAudio_ReturnsFalse()
     {
-        var item = new Audio { NormalizationGain = -7.25f };
         var source = new MediaSourceInfo {
             MediaStreams = [new MediaStream { Type = MediaStreamType.Video }]
         };
         var filter = CreateFilter();
 
-        filter.RequiresNormalization(item, source).Should().BeFalse();
+        filter.RequiresNormalization(source).Should().BeFalse();
     }
 
     [Fact]
     public void DirectPlayDecision_LeavesDirectStreamAvailable()
     {
         var source = CreateAudioSource();
-        var item = new Audio { NormalizationGain = -7.25f };
         var filter = CreateFilter();
 
-        if (filter.RequiresNormalization(item, source))
-        {
-            source.SupportsDirectPlay = false;
-        }
-
-        source.SupportsDirectPlay.Should().BeFalse();
+        filter.RequiresNormalization(source).Should().BeFalse();
+        source.SupportsDirectPlay.Should().BeTrue();
         source.SupportsDirectStream.Should().BeTrue();
         source.SupportsTranscoding.Should().BeTrue();
     }
@@ -64,7 +55,6 @@ public sealed class ReplayGainPlaybackInfoFilterTests
         var applicationPaths = new Mock<IApplicationPaths>();
         applicationPaths.Setup(paths => paths.DataPath).Returns(Path.GetTempPath());
         return new ReplayGainPlaybackInfoFilter(
-            new Mock<MediaBrowser.Controller.Library.ILibraryManager>().Object,
             new LoudnormCacheStore(applicationPaths.Object, NullLogger<LoudnormCacheStore>.Instance),
             NullLogger<ReplayGainPlaybackInfoFilter>.Instance);
     }
