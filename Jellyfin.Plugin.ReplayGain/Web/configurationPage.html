@@ -6,13 +6,20 @@
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label>
                         <input id="enabled" is="emby-checkbox" type="checkbox"/>
-                        <span>Enable loudnorm normalization</span>
+                        <span>Enable loudness normalization</span>
                     </label>
-                    <div class="fieldDescription">Analyzes audio streams with FFmpeg loudnorm and applies normalization
+                    <div class="fieldDescription">Analyzes audio streams with FFmpeg and applies normalization
                         while Jellyfin transcodes audio. Direct Play remains available until analysis completes.
                     </div>
                 </div>
-                <div class="fieldDescription">Uses background two-pass FFmpeg loudnorm analysis for audio streams.
+                <div class="inputContainer">
+                    <select id="measurementMethod" is="emby-select">
+                        <option value="0">ebur128 (faster)</option>
+                        <option value="1">loudnorm (more accurate)</option>
+                    </select>
+                    <div class="fieldDescription">Measurement method. ebur128 is 5-8 times faster, but unnoticeable less precise.</div>
+                </div>
+                <div class="fieldDescription">Uses background FFmpeg analysis for audio streams.
                     Direct Play is disabled only after a valid measurement is available.
                 </div>
                 <div class="checkboxContainer checkboxContainer-withDescription">
@@ -48,7 +55,8 @@
             var page = document.querySelector('.replayGainConfigForm').closest('.pluginConfigurationPage');
             page.addEventListener('pageshow', function () {
                 ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
-                    page.querySelector('#enabled').checked = config.Enabled === true;
+                     page.querySelector('#enabled').checked = config.Enabled === true;
+                     page.querySelector('#measurementMethod').value = String(config.MeasurementMethod ?? 0);
                     page.querySelector('#preserveDynamicRange').checked = config.PreserveDynamicRange === true;
                     page.querySelector('#integratedLoudness').value = config.LoudnormIntegratedLoudness ?? -16;
                     page.querySelector('#truePeak').value = config.LoudnormTruePeak ?? -1.5;
@@ -58,7 +66,8 @@
             page.querySelector('.replayGainConfigForm').addEventListener('submit', function (event) {
                 event.preventDefault();
                 ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
-                    config.Enabled = page.querySelector('#enabled').checked;
+                     config.Enabled = page.querySelector('#enabled').checked;
+                     config.MeasurementMethod = Number(page.querySelector('#measurementMethod').value);
                     config.PreserveDynamicRange = page.querySelector('#preserveDynamicRange').checked;
                     config.LoudnormIntegratedLoudness = Number(page.querySelector('#integratedLoudness').value);
                     config.LoudnormTruePeak = Number(page.querySelector('#truePeak').value);

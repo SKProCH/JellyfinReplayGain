@@ -5,6 +5,8 @@ namespace Jellyfin.Plugin.ReplayGain.Configuration;
 public sealed class PluginConfiguration : BasePluginConfiguration {
     public bool Enabled { get; set; } = true;
 
+    public MeasurementMethod MeasurementMethod { get; set; } = MeasurementMethod.Ebur128;
+
     public bool PreserveDynamicRange { get; set; } = false;
 
     public double LoudnormIntegratedLoudness { get; set; } = -16.0;

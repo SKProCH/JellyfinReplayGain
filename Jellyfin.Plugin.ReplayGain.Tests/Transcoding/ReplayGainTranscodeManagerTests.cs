@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.ReplayGain.Loudness;
 using Jellyfin.Plugin.ReplayGain.Loudnorm;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Library;
@@ -72,7 +73,7 @@ public sealed class ReplayGainTranscodeManagerTests {
             NullLogger<ReplayGainTranscodeManager>.Instance,
             CreateEncodingHelper(applicationPaths.Object),
             new Mock<ILibraryManager>().Object,
-            new LoudnormCacheStore(applicationPaths.Object, NullLogger<LoudnormCacheStore>.Instance),
+            new LoudnessCacheStore(applicationPaths.Object, NullLogger<LoudnessCacheStore>.Instance),
             () => enabled);
     }
 

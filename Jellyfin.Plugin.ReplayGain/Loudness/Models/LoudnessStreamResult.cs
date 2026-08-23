@@ -1,6 +1,6 @@
-namespace Jellyfin.Plugin.ReplayGain.Loudnorm.Models;
+namespace Jellyfin.Plugin.ReplayGain.Loudness.Models;
 
-public sealed class LoudnormStreamResult {
+public sealed class LoudnessStreamResult {
     public int StreamIndex { get; set; }
 
     public double InputI { get; set; }

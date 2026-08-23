@@ -1,7 +1,8 @@
 using System.Globalization;
 using System.Text;
+using Jellyfin.Plugin.ReplayGain.Loudness;
 using Jellyfin.Plugin.ReplayGain.Loudnorm;
-using Jellyfin.Plugin.ReplayGain.Loudnorm.Models;
+using Jellyfin.Plugin.ReplayGain.Loudness.Models;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
@@ -17,21 +18,21 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
     private readonly Func<bool> _isEnabled;
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<ReplayGainTranscodeManager> _logger;
-    private readonly LoudnormCacheStore _loudnormCache;
+    private readonly LoudnessCacheStore _loudnessCache;
 
     public ReplayGainTranscodeManager(
         ITranscodeManager inner,
         ILogger<ReplayGainTranscodeManager> logger,
         EncodingHelper encodingHelper,
         ILibraryManager libraryManager,
-        LoudnormCacheStore loudnormCache,
+        LoudnessCacheStore loudnessCache,
         Func<bool>? isEnabled = null) {
         _inner = inner;
         _logger = logger;
         _encodingHelper = encodingHelper;
         _isEnabled = isEnabled ?? (() => ReplayGainPlugin.IsEnabled);
         _libraryManager = libraryManager;
-        _loudnormCache = loudnormCache;
+        _loudnessCache = loudnessCache;
     }
 
     public TranscodingJob? GetTranscodingJob(string playSessionId) {
@@ -133,7 +134,7 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
                 })
                 .ToArray();
             var config = ReplayGainPlugin.Instance!.Configuration;
-            if (_loudnormCache.TryGet(state.MediaPath, signature, streamSignatures, out var result)) {
+            if (_loudnessCache.TryGet(state.MediaPath, signature, streamSignatures, config.MeasurementMethod, out var result)) {
                 var stream = result.Streams.FirstOrDefault(value => value.StreamIndex == state.AudioStream.Index);
                 if (stream is not null) {
                     if (config.PreserveDynamicRange) {
