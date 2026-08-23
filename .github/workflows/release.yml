@@ -47,9 +47,18 @@ jobs:
           SEMVER=$(minver -t v -p preview -v error)
           echo "semver=${SEMVER}" >> "$GITHUB_OUTPUT"
           BASE=$(echo "$SEMVER" | sed 's/-.*//')
-          PRERELEASE=$(echo "$SEMVER" | grep -oP '(?<=\.)\d+$' || true)
           if echo "$SEMVER" | grep -q '-'; then
-            JPRM_VERSION="${BASE}.${PRERELEASE:-0}"
+            # JPRM requires a four-part numeric version. Use the number of
+            # commits after the latest version tag so it increases without
+            # creating a tag for every nightly build.
+            LAST_STABLE_TAG=$(git tag --merged HEAD --sort=-creatordate \
+              | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/ { print; exit }')
+            if [[ -n "$LAST_STABLE_TAG" ]]; then
+              NIGHTLY_NUMBER=$(git rev-list --count "${LAST_STABLE_TAG}..HEAD")
+            else
+              NIGHTLY_NUMBER=$(git rev-list --count HEAD)
+            fi
+            JPRM_VERSION="${BASE}.${NIGHTLY_NUMBER}"
           else
             JPRM_VERSION="${BASE}.0"
           fi
@@ -71,7 +80,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,14 +92,18 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.build.outputs.semver }}
+          tag_name: ${{ github.ref_name }}
           files: ./release-assets/*
-          generate_release_notes: ${{ startsWith(github.ref, 'refs/tags/v') }}
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          generate_release_notes: true
+          prerelease: false
 
   publish-manifest:
     needs: [build, release]
     runs-on: ubuntu-latest
+    if: ${{ always() && github.event_name != 'pull_request' && needs.build.result == 'success' && (needs.release.result == 'success' || (needs.release.result == 'skipped' && github.ref_type != 'tag')) }}
+    concurrency:
+      group: replaygain-pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -108,11 +121,40 @@ jobs:
           mkdir -p pages
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           curl -sSfL "${PAGES_URL}/manifest.json" -o pages/manifest.json || echo '[]' > pages/manifest.json
+          if ! jq -e 'type == "array"' pages/manifest.json >/dev/null 2>&1; then
+            echo '[]' > pages/manifest.json
+          fi
           ZIP_FILE=$(find ./release-assets -maxdepth 1 -name '*.zip' -print -quit)
           ZIP_NAME=$(basename "$ZIP_FILE")
           CHECKSUM=$(md5sum "$ZIP_FILE" | awk '{print $1}')
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          SOURCE_URL="https://github.com/${{ github.repository }}/releases/download/v${{ needs.build.outputs.semver }}/${ZIP_NAME}"
+          VERSION="${{ needs.build.outputs.version }}"
+          IS_STABLE=false
+          if [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            IS_STABLE=true
+            SOURCE_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}"
+          else
+            SOURCE_URL="${PAGES_URL}/artifacts/${VERSION}.zip"
+          fi
+          mkdir -p pages/artifacts
+
+          # Keep nightly files from the currently deployed Pages site.
+          if [[ "$IS_STABLE" != true ]] && [[ -f pages/manifest.json ]]; then
+            jq -r '.[].versions[]? | select((.sourceUrl? // "") | contains("/artifacts/")) | .sourceUrl' pages/manifest.json \
+              | while read -r URL; do
+                  FILE="pages/artifacts/$(basename "$URL")"
+                  curl -sSfL "$URL" -o "$FILE" || rm -f "$FILE"
+                done
+          fi
+          cp "$ZIP_FILE" "pages/artifacts/${VERSION}.zip"
+
+          # A stable release starts a new nightly cycle.
+          if [[ "$IS_STABLE" == true ]] && [[ -f pages/manifest.json ]]; then
+            jq 'map(.versions = [(.versions // [])[] | select(((.sourceUrl? // "") | contains("/artifacts/")) | not)])' \
+              pages/manifest.json > pages/manifest.tmp
+            mv pages/manifest.tmp pages/manifest.json
+            rm -f pages/artifacts/*.zip
+          fi
           GUID=$(grep '^guid:' build.yaml | awk '{print $2}' | tr -d '"')
           NAME=$(grep '^name:' build.yaml | awk '{print $2}' | sed 's/^"//;s/"$//')
           DESCRIPTION=$(grep '^overview:' build.yaml | sed 's/^overview: *//' | tr -d '"')
