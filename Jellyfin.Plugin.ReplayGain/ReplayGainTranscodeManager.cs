@@ -13,6 +13,7 @@ namespace Jellyfin.Plugin.ReplayGain;
 
 public sealed class ReplayGainTranscodeManager : ITranscodeManager {
     private readonly ITranscodeManager _inner;
+    private readonly EncodingHelper _encodingHelper;
     private readonly Func<bool> _isEnabled;
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<ReplayGainTranscodeManager> _logger;
@@ -21,11 +22,13 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
     public ReplayGainTranscodeManager(
         ITranscodeManager inner,
         ILogger<ReplayGainTranscodeManager> logger,
+        EncodingHelper encodingHelper,
         ILibraryManager libraryManager,
         LoudnormCacheStore loudnormCache,
         Func<bool>? isEnabled = null) {
         _inner = inner;
         _logger = logger;
+        _encodingHelper = encodingHelper;
         _isEnabled = isEnabled ?? (() => ReplayGainPlugin.IsEnabled);
         _libraryManager = libraryManager;
         _loudnormCache = loudnormCache;
@@ -70,10 +73,16 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
         var command = commandLineArguments;
         if (_isEnabled() && IsAudioTranscode(state)) {
             var filter = GetFilter(state);
-            if (filter is not null &&
-                !ReplayGainCommandLine.TryAppendFilter(commandLineArguments, filter, out command)) {
-                _logger.LogWarning(
-                    "ReplayGain could not safely update the FFmpeg command; using the original command line");
+            if (filter is not null) {
+                if (EncodingHelper.IsCopyCodec(state.OutputAudioCodec)
+                    && !ReplayGainCommandLine.TryReplaceAudioCopyCodec(command, GetAudioEncoder(state), out command)) {
+                    _logger.LogWarning("ReplayGain could not replace the copied audio codec; using the original codec");
+                }
+
+                if (!ReplayGainCommandLine.TryAppendFilter(command, filter, out command)) {
+                    _logger.LogWarning(
+                        "ReplayGain could not safely update the FFmpeg command; using the original command line");
+                }
             }
         }
 
@@ -150,8 +159,15 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
         return value.ToString("0.###", CultureInfo.InvariantCulture);
     }
 
+    private string GetAudioEncoder(StreamState state) {
+        var temporaryState = new EncodingJobInfo(state.TranscodingType) {
+            OutputAudioCodec = state.AudioStream?.Codec
+        };
+        return _encodingHelper.GetAudioEncoder(temporaryState);
+    }
+
     internal static bool IsAudioTranscode(StreamState state) {
-        if (state.BaseRequest?.Static == true || EncodingHelper.IsCopyCodec(state.OutputAudioCodec)) {
+        if (state.BaseRequest?.Static == true) {
             return false;
         }
 
@@ -159,6 +175,35 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
     }
 
     public static class ReplayGainCommandLine {
+        public static bool TryReplaceAudioCopyCodec(string commandLine, string encoder, out string updatedCommandLine) {
+            updatedCommandLine = commandLine;
+            var tokens = Tokenize(commandLine);
+            if (tokens is null) {
+                return false;
+            }
+
+            var replacements = new List<(int Start, int Length, string Value)>();
+            for (var index = 0; index + 1 < tokens.Count; index++) {
+                if (!IsAudioCodecOption(tokens[index].Value)
+                    || !string.Equals(tokens[index + 1].Value, "copy", StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                var codecToken = tokens[index + 1];
+                var original = commandLine.Substring(codecToken.Start, codecToken.Length);
+                replacements.Add((codecToken.Start, codecToken.Length, QuoteLike(original, encoder)));
+            }
+
+            for (var index = replacements.Count - 1; index >= 0; index--) {
+                var replacement = replacements[index];
+                updatedCommandLine = updatedCommandLine[..replacement.Start]
+                                     + replacement.Value
+                                     + updatedCommandLine[(replacement.Start + replacement.Length)..];
+            }
+
+            return replacements.Count > 0;
+        }
+
         public static bool TryAppendFilter(string commandLine, string filter, out string updatedCommandLine) {
             updatedCommandLine = commandLine;
             if (string.IsNullOrWhiteSpace(commandLine)) {
@@ -202,6 +247,28 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
             updatedCommandLine = commandLine[..outputMarker.Start] + "-af \"" + filter + "\" " +
                                  commandLine[outputMarker.Start..];
             return true;
+        }
+
+        private static bool IsAudioCodecOption(string value) {
+            if (value.StartsWith("-c:a", StringComparison.OrdinalIgnoreCase)) {
+                return value.Length == 4 || value[4] == ':' && value.Length > 5;
+            }
+
+            if (value.StartsWith("-codec:a", StringComparison.OrdinalIgnoreCase)) {
+                return value.Length == 8 || value[8] == ':' && value.Length > 9;
+            }
+
+            return false;
+        }
+
+        private static string QuoteLike(string original, string value) {
+            if (original.Length >= 2
+                && ((original[0] == '"' && original[^1] == '"')
+                    || (original[0] == '\'' && original[^1] == '\''))) {
+                return original[0] + value + original[^1];
+            }
+
+            return value;
         }
 
         private static List<Token>? Tokenize(string commandLine) {

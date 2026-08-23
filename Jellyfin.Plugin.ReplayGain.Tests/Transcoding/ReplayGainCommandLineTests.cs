@@ -2,6 +2,46 @@ namespace Jellyfin.Plugin.ReplayGain.Tests.Transcoding;
 
 public sealed class ReplayGainCommandLineTests {
     [Fact]
+    public void TryReplaceAudioCopyCodec_ReplacesUnindexedAudioCodecOnly() {
+        var command = "-i input.mkv -map 0:v -map 0:a -c:v copy -c:a copy -c:s copy output.mkv";
+
+        ReplayGainTranscodeManager.ReplayGainCommandLine.TryReplaceAudioCopyCodec(command, "aac", out var updated)
+            .Should().BeTrue();
+
+        updated.Should().Be("-i input.mkv -map 0:v -map 0:a -c:v copy -c:a aac -c:s copy output.mkv");
+    }
+
+    [Fact]
+    public void TryReplaceAudioCopyCodec_ReplacesIndexedAudioCodec() {
+        var command = "-i input.mkv -c:v copy -codec:a:0 copy -c:a:1 copy output.mkv";
+
+        ReplayGainTranscodeManager.ReplayGainCommandLine.TryReplaceAudioCopyCodec(command, "libopus", out var updated)
+            .Should().BeTrue();
+
+        updated.Should().Be("-i input.mkv -c:v copy -codec:a:0 libopus -c:a:1 libopus output.mkv");
+    }
+
+    [Fact]
+    public void TryReplaceAudioCopyCodec_WhenNoAudioCopy_LeavesCommandUnchanged() {
+        var command = "-i input.mkv -c:v copy -c:s copy output.mkv";
+
+        ReplayGainTranscodeManager.ReplayGainCommandLine.TryReplaceAudioCopyCodec(command, "aac", out var updated)
+            .Should().BeFalse();
+
+        updated.Should().Be(command);
+    }
+
+    [Fact]
+    public void TryReplaceAudioCopyCodec_WhenQuotesAreUsed_PreservesQuotedValueShape() {
+        var command = "-i input.mkv -c:a \"copy\" -c:v copy output.mkv";
+
+        ReplayGainTranscodeManager.ReplayGainCommandLine.TryReplaceAudioCopyCodec(command, "aac", out var updated)
+            .Should().BeTrue();
+
+        updated.Should().Be("-i input.mkv -c:a \"aac\" -c:v copy output.mkv");
+    }
+
+    [Fact]
     public void TryAppendFilter_WithoutAudioFilter_AddsFilter() {
         var command = "-i \"music file.flac\" -codec:a aac -y \"output file.m4a\"";
 

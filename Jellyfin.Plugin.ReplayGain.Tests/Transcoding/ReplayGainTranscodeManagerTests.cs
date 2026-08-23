@@ -1,7 +1,10 @@
 using Jellyfin.Plugin.ReplayGain.Loudnorm;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
+using MediaBrowser.Controller.IO;
+using Microsoft.Extensions.Configuration;
 using MediaBrowser.Controller.Streaming;
 using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -56,9 +59,20 @@ public sealed class ReplayGainTranscodeManagerTests {
         return new ReplayGainTranscodeManager(
             inner,
             NullLogger<ReplayGainTranscodeManager>.Instance,
+            CreateEncodingHelper(applicationPaths.Object),
             new Mock<ILibraryManager>().Object,
             new LoudnormCacheStore(applicationPaths.Object, NullLogger<LoudnormCacheStore>.Instance),
             () => enabled);
+    }
+
+    private static EncodingHelper CreateEncodingHelper(IApplicationPaths applicationPaths) {
+        return new EncodingHelper(
+            applicationPaths,
+            new Mock<IMediaEncoder>().Object,
+            new Mock<ISubtitleEncoder>().Object,
+            new ConfigurationBuilder().Build(),
+            new Mock<MediaBrowser.Common.Configuration.IConfigurationManager>().Object,
+            new Mock<IPathManager>().Object);
     }
 
     private static Mock<ITranscodeManager> CreateInner(out List<string> receivedCommands) {
