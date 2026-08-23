@@ -29,7 +29,7 @@ public sealed class LoudnessCacheStore {
             if (_cache.Files.TryGetValue(key, out result!)
                 && result.Length == signature.Length
                 && result.LastWriteTimeUtc == signature.LastWriteTimeUtc
-                && (result.MeasurementMethod ?? MeasurementMethod.Loudnorm) == measurementMethod
+                && IsUsableFor(result.MeasurementMethod ?? MeasurementMethod.Loudnorm, measurementMethod)
                 && result.AudioStreams.SequenceEqual(audioStreams)) {
                 return true;
             }
@@ -37,6 +37,27 @@ public sealed class LoudnessCacheStore {
 
         result = null!;
         return false;
+    }
+
+    public bool TryGetAny(string path, FileSignature signature, IReadOnlyList<AudioStreamSignature> audioStreams,
+        out LoudnessFileResult result) {
+        var key = Path.GetFullPath(path);
+        lock (_gate) {
+            if (_cache.Files.TryGetValue(key, out result!)
+                && result.Length == signature.Length
+                && result.LastWriteTimeUtc == signature.LastWriteTimeUtc
+                && result.AudioStreams.SequenceEqual(audioStreams)) {
+                return true;
+            }
+        }
+
+        result = null!;
+        return false;
+    }
+
+    private static bool IsUsableFor(MeasurementMethod storedMethod, MeasurementMethod requestedMethod) {
+        return storedMethod == requestedMethod
+            || requestedMethod == MeasurementMethod.Ebur128 && storedMethod == MeasurementMethod.Loudnorm;
     }
 
     public void Put(string path, FileSignature signature, IReadOnlyList<AudioStreamSignature> audioStreams,
