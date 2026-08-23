@@ -11,98 +11,111 @@ namespace Jellyfin.Plugin.ReplayGain;
 
 public sealed class ReplayGainPlaybackInfoFilter(
     LoudnormCacheStore loudnormCache,
-    ILogger<ReplayGainPlaybackInfoFilter> logger) : IAsyncActionFilter
-{
-    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
-    {
+    ILogger<ReplayGainPlaybackInfoFilter> logger) : IAsyncActionFilter {
+    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next) {
         var executedContext = await next().ConfigureAwait(false);
-        if (!ReplayGainPlugin.IsEnabled || !TryGetPlaybackInfo(executedContext.Result, out var playbackInfo))
-        {
+        if (!ReplayGainPlugin.IsEnabled || !TryGetPlaybackInfo(executedContext.Result, out var playbackInfo)) {
             return;
         }
 
-        if (!Guid.TryParse(Convert.ToString(context.RouteData.Values["itemId"]), out var itemId))
-        {
+        if (!Guid.TryParse(Convert.ToString(context.RouteData.Values["itemId"]), out var itemId)) {
             return;
         }
 
-        foreach (var mediaSource in playbackInfo.MediaSources)
-        {
-            if (!mediaSource.SupportsDirectPlay
-                || mediaSource is { SupportsDirectStream: false, SupportsTranscoding: false }
-                || !RequiresNormalization(mediaSource))
-            {
+        foreach (var mediaSource in playbackInfo.MediaSources) {
+            if (!mediaSource.SupportsDirectPlay) {
+                logger.LogDebug(
+                    "ReplayGain matched PlaybackInfo for item {ItemId}, source {SourceId}, but did not change it: direct play is already disabled",
+                    itemId, mediaSource.Id);
+                continue;
+            }
+
+            if (mediaSource is { SupportsDirectStream: false, SupportsTranscoding: false }) {
+                logger.LogDebug(
+                    "ReplayGain matched PlaybackInfo for item {ItemId}, source {SourceId}, but did not change it: direct stream and transcoding are unavailable",
+                    itemId, mediaSource.Id);
+                continue;
+            }
+
+            if (!RequiresNormalization(mediaSource, out var reason)) {
+                logger.LogDebug(
+                    "ReplayGain matched PlaybackInfo for item {ItemId}, source {SourceId}, but did not change it: {Reason}",
+                    itemId, mediaSource.Id, reason);
                 continue;
             }
 
             mediaSource.SupportsDirectPlay = false;
-            logger.LogDebug(
-                "ReplayGain disabled direct play for item {ItemId}, source {SourceId}, path {Path}",
+            logger.LogInformation(
+                "ReplayGain disabled direct play for item {ItemId}, source {SourceId}, path {Path} to allow loudness adjustment",
                 itemId, mediaSource.Id, mediaSource.Path);
         }
     }
 
-    internal bool RequiresNormalization(MediaSourceInfo mediaSource)
-    {
-        if (mediaSource.MediaStreams.All(stream => stream.Type != MediaStreamType.Audio))
-        {
+    internal bool RequiresNormalization(MediaSourceInfo mediaSource) {
+        return RequiresNormalization(mediaSource, out _);
+    }
+
+    private bool RequiresNormalization(MediaSourceInfo mediaSource, out string reason) {
+        if (mediaSource.MediaStreams.All(stream => stream.Type != MediaStreamType.Audio)) {
+            reason = "the source has no audio stream";
             return false;
         }
 
-        if (!string.IsNullOrWhiteSpace(mediaSource.Path))
-        {
-            var config = ReplayGainPlugin.Instance!.Configuration;
-            var signatures = mediaSource.MediaStreams
-                .Where(stream => stream.Type == MediaStreamType.Audio)
-                .Select(stream => new AudioStreamSignature {
-                    Index = stream.Index,
-                    Codec = stream.Codec,
-                    Language = stream.Language,
-                    Channels = stream.Channels,
-                    SampleRate = stream.SampleRate
-                })
-                .ToArray();
-            var signature = FileSignature.FromFile(mediaSource.Path);
-            if (loudnormCache.TryGet(mediaSource.Path, signature, signatures,
-                    config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange,
-                    config.PreserveDynamicRange, out var result))
-            {
-                var selectedIndex = mediaSource.DefaultAudioStreamIndex
-                    ?? signatures.FirstOrDefault()?.Index;
-                if (selectedIndex.HasValue
-                    && result.Streams.Any(stream => stream.StreamIndex == selectedIndex.Value))
-                {
-                    var stream = result.Streams.First(stream => stream.StreamIndex == selectedIndex.Value);
-                    if (!config.PreserveDynamicRange) {
-                        logger.LogDebug(
-                            "ReplayGain disabled direct play for {Path}, stream {StreamIndex}: linear loudnorm cache is available with measured I {MeasuredI} LUFS, TP {MeasuredTp} dBTP, LRA {MeasuredLra} LU",
-                            mediaSource.Path, selectedIndex.Value, stream.InputI, stream.InputTp, stream.InputLra);
-                        return true;
-                    }
-
-                    var gain = ReplayGainTranscodeManager.CalculatePeakSafeGain(
-                        config.LoudnormIntegratedLoudness,
-                        config.LoudnormTruePeak,
-                        stream.InputI,
-                        stream.InputTp);
-                    var canApplyGain = double.IsFinite(gain) && gain != 0;
-                    logger.LogDebug(
-                        "ReplayGain {Decision} direct play for {Path}, stream {StreamIndex}: constant-gain mode, measured I {MeasuredI} LUFS, target {TargetI} LUFS, gain {Gain} dB",
-                        canApplyGain ? "disabled" : "kept", mediaSource.Path, selectedIndex.Value, stream.InputI,
-                        config.LoudnormIntegratedLoudness, gain);
-                    return canApplyGain;
-                }
-            }
+        if (string.IsNullOrWhiteSpace(mediaSource.Path)) {
+            reason = "the source has no media path";
+            return false;
         }
 
+        var config = ReplayGainPlugin.Instance!.Configuration;
+        var signatures = mediaSource.MediaStreams
+            .Where(stream => stream.Type == MediaStreamType.Audio)
+            .Select(stream => new AudioStreamSignature {
+                Index = stream.Index,
+                Codec = stream.Codec,
+                Language = stream.Language,
+                Channels = stream.Channels,
+                SampleRate = stream.SampleRate
+            })
+            .ToArray();
+        var signature = FileSignature.FromFile(mediaSource.Path);
+        if (!loudnormCache.TryGet(mediaSource.Path, signature, signatures,
+                config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange,
+                config.PreserveDynamicRange, out var result)) {
+            reason = "no matching loudnorm cache entry exists";
+            return false;
+        }
+
+        var selectedIndex = mediaSource.DefaultAudioStreamIndex ?? signatures.FirstOrDefault()?.Index;
+        var stream = selectedIndex.HasValue
+            ? result.Streams.FirstOrDefault(value => value.StreamIndex == selectedIndex.Value)
+            : null;
+        if (stream is null) {
+            reason = $"the loudnorm cache has no result for audio stream {selectedIndex?.ToString() ?? "<none>"}";
+            return false;
+        }
+
+        if (!config.PreserveDynamicRange) {
+            reason = string.Empty;
+            return true;
+        }
+
+        var gain = ReplayGainTranscodeManager.CalculatePeakSafeGain(
+            config.LoudnormIntegratedLoudness,
+            config.LoudnormTruePeak,
+            stream.InputI,
+            stream.InputTp);
+        if (double.IsFinite(gain) && gain != 0) {
+            reason = string.Empty;
+            return true;
+        }
+
+        reason = $"constant-gain mode produced no finite non-zero gain ({gain} dB)";
         return false;
     }
 
-    private static bool TryGetPlaybackInfo(IActionResult? actionResult, out PlaybackInfoResponse playbackInfo)
-    {
+    private static bool TryGetPlaybackInfo(IActionResult? actionResult, out PlaybackInfoResponse playbackInfo) {
         playbackInfo = null!;
-        if (actionResult is not ObjectResult { Value: PlaybackInfoResponse value })
-        {
+        if (actionResult is not ObjectResult { Value: PlaybackInfoResponse value }) {
             return false;
         }
 
