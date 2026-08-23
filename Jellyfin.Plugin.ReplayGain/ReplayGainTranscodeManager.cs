@@ -74,14 +74,28 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
         if (_isEnabled() && IsAudioTranscode(state)) {
             var filter = GetFilter(state);
             if (filter is not null) {
-                if (EncodingHelper.IsCopyCodec(state.OutputAudioCodec)
-                    && !ReplayGainCommandLine.TryReplaceAudioCopyCodec(command, GetAudioEncoder(state), out command)) {
-                    _logger.LogWarning("ReplayGain could not replace the copied audio codec; using the original codec");
+                if (EncodingHelper.IsCopyCodec(state.OutputAudioCodec)) {
+                    var encoder = GetAudioEncoder(state);
+                    if (ReplayGainCommandLine.TryReplaceAudioCopyCodec(command, encoder, out command)) {
+                        _logger.LogDebug(
+                            "ReplayGain replaced copied audio codec with {Encoder} for stream {StreamIndex} in {Path}",
+                            encoder, state.AudioStream?.Index, state.MediaPath);
+                    }
+                    else {
+                        _logger.LogWarning(
+                            "ReplayGain could not replace copied audio codec with {Encoder}; using the original codec for stream {StreamIndex} in {Path}",
+                            encoder, state.AudioStream?.Index, state.MediaPath);
+                    }
                 }
 
-                if (!ReplayGainCommandLine.TryAppendFilter(command, filter, out command)) {
+                if (ReplayGainCommandLine.TryAppendFilter(command, filter, out command)) {
+                    _logger.LogDebug("ReplayGain added {Filter} for stream {StreamIndex} in {Path}",
+                        filter, state.AudioStream?.Index, state.MediaPath);
+                }
+                else {
                     _logger.LogWarning(
-                        "ReplayGain could not safely update the FFmpeg command; using the original command line");
+                        "ReplayGain could not safely add {Filter}; using the original FFmpeg command for stream {StreamIndex} in {Path}",
+                        filter, state.AudioStream?.Index, state.MediaPath);
                 }
             }
         }
@@ -126,20 +140,37 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
                 if (stream is not null) {
                     if (config.PreserveDynamicRange) {
                         var gain = config.LoudnormIntegratedLoudness - stream.InputI;
-                        return double.IsFinite(gain) && gain != 0
-                            ? $"volume={Format(gain)}dB"
-                            : null;
+                        if (double.IsFinite(gain) && gain != 0) {
+                            var normalizationFilter = $"volume={Format(gain)}dB";
+                            _logger.LogDebug(
+                                "ReplayGain selected constant-gain normalization for {Path}, stream {StreamIndex}: measured {MeasuredI} LUFS, target {TargetI} LUFS, gain {Gain} dB",
+                                state.MediaPath, state.AudioStream.Index, Format(stream.InputI),
+                                Format(config.LoudnormIntegratedLoudness), Format(gain));
+                            return normalizationFilter;
+                        }
+
+                        _logger.LogDebug(
+                            "ReplayGain skipped normalization for {Path}, stream {StreamIndex}: measured {MeasuredI} LUFS, target {TargetI} LUFS produced no finite non-zero gain",
+                            state.MediaPath, state.AudioStream.Index, Format(stream.InputI),
+                            Format(config.LoudnormIntegratedLoudness));
+                        return null;
                     }
 
-                    return $"loudnorm=I={Format(config.LoudnormIntegratedLoudness)}" +
-                           $":TP={Format(config.LoudnormTruePeak)}" +
-                           $":LRA={Format(config.LoudnormLoudnessRange)}" +
-                           $":measured_I={Format(stream.InputI)}" +
-                           $":measured_TP={Format(stream.InputTp)}" +
-                           $":measured_LRA={Format(stream.InputLra)}" +
-                           $":measured_thresh={Format(stream.InputThresh)}" +
-                           $":offset={Format(stream.TargetOffset)}" +
-                           $":linear=true";
+                    var loudnormFilter = $"loudnorm=I={Format(config.LoudnormIntegratedLoudness)}" +
+                                         $":TP={Format(config.LoudnormTruePeak)}" +
+                                         $":LRA={Format(config.LoudnormLoudnessRange)}" +
+                                         $":measured_I={Format(stream.InputI)}" +
+                                         $":measured_TP={Format(stream.InputTp)}" +
+                                         $":measured_LRA={Format(stream.InputLra)}" +
+                                         $":measured_thresh={Format(stream.InputThresh)}" +
+                                         $":offset={Format(stream.TargetOffset)}" +
+                                         $":linear=true";
+                    _logger.LogDebug(
+                        "ReplayGain selected linear loudnorm for {Path}, stream {StreamIndex}: measured I {MeasuredI} LUFS, TP {MeasuredTp} dBTP, LRA {MeasuredLra} LU, targets I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU",
+                        state.MediaPath, state.AudioStream.Index, Format(stream.InputI), Format(stream.InputTp),
+                        Format(stream.InputLra), Format(config.LoudnormIntegratedLoudness),
+                        Format(config.LoudnormTruePeak), Format(config.LoudnormLoudnessRange));
+                    return loudnormFilter;
                 }
             }
         }

@@ -26,7 +26,6 @@ public sealed class ReplayGainPlaybackInfoFilter(
             return;
         }
 
-        var changed = false;
         foreach (var mediaSource in playbackInfo.MediaSources)
         {
             if (!mediaSource.SupportsDirectPlay
@@ -37,12 +36,9 @@ public sealed class ReplayGainPlaybackInfoFilter(
             }
 
             mediaSource.SupportsDirectPlay = false;
-            changed = true;
-        }
-
-        if (changed)
-        {
-            logger.LogDebug("Disabled direct play for item {ItemId} because ReplayGain normalization is available", itemId);
+            logger.LogDebug(
+                "ReplayGain disabled direct play for item {ItemId}, source {SourceId}, path {Path}",
+                itemId, mediaSource.Id, mediaSource.Path);
         }
     }
 
@@ -77,9 +73,20 @@ public sealed class ReplayGainPlaybackInfoFilter(
                     && result.Streams.Any(stream => stream.StreamIndex == selectedIndex.Value))
                 {
                     var stream = result.Streams.First(stream => stream.StreamIndex == selectedIndex.Value);
-                    return !config.PreserveDynamicRange
-                        || double.IsFinite(config.LoudnormIntegratedLoudness - stream.InputI)
-                            && config.LoudnormIntegratedLoudness - stream.InputI != 0;
+                    if (!config.PreserveDynamicRange) {
+                        logger.LogDebug(
+                            "ReplayGain disabled direct play for {Path}, stream {StreamIndex}: linear loudnorm cache is available with measured I {MeasuredI} LUFS, TP {MeasuredTp} dBTP, LRA {MeasuredLra} LU",
+                            mediaSource.Path, selectedIndex.Value, stream.InputI, stream.InputTp, stream.InputLra);
+                        return true;
+                    }
+
+                    var gain = config.LoudnormIntegratedLoudness - stream.InputI;
+                    var canApplyGain = double.IsFinite(gain) && gain != 0;
+                    logger.LogDebug(
+                        "ReplayGain {Decision} direct play for {Path}, stream {StreamIndex}: constant-gain mode, measured I {MeasuredI} LUFS, target {TargetI} LUFS, gain {Gain} dB",
+                        canApplyGain ? "disabled" : "kept", mediaSource.Path, selectedIndex.Value, stream.InputI,
+                        config.LoudnormIntegratedLoudness, gain);
+                    return canApplyGain;
                 }
             }
         }

@@ -95,6 +95,11 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             return;
         }
 
+        _logger.LogDebug(
+            "Starting loudnorm analysis for {Path}: {StreamCount} audio stream(s), target I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU, preserve dynamic range {PreserveDynamicRange}",
+            path, audioStreams.Length, config.LoudnormIntegratedLoudness, config.LoudnormTruePeak,
+            config.LoudnormLoudnessRange, config.PreserveDynamicRange);
+
         var filters = audioStreams.Select(ComposeFilter);
         var arguments = new List<string>
             { "-hide_banner", "-i", path, "-filter_complex", string.Join(';', filters), "-vn", "-sn" };
@@ -122,6 +127,7 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
 
             _cache.Put(path, signature, streamSignatures, config.LoudnormIntegratedLoudness,
                 config.LoudnormTruePeak, config.LoudnormLoudnessRange, results);
+            _logger.LogDebug("Saved loudnorm analysis for {Path}: {StreamCount} audio stream(s)", path, results.Count);
         }
         catch (IOException ex) {
             _logger.LogDebug(ex, "Could not save loudnorm result for {Path}", path);
