@@ -138,23 +138,25 @@ jobs:
           fi
           mkdir -p pages/artifacts
 
-          # Keep nightly files from the currently deployed Pages site.
-          if [[ "$IS_STABLE" != true ]] && [[ -f pages/manifest.json ]]; then
-            jq -r '.[].versions[]? | select((.sourceUrl? // "") | contains("/artifacts/")) | .sourceUrl' pages/manifest.json \
-              | while read -r URL; do
-                  FILE="pages/artifacts/$(basename "$URL")"
-                  curl -sSfL "$URL" -o "$FILE" || rm -f "$FILE"
-                done
-          fi
-          cp "$ZIP_FILE" "pages/artifacts/${VERSION}.zip"
-
-          # A stable release starts a new nightly cycle.
-          if [[ "$IS_STABLE" == true ]] && [[ -f pages/manifest.json ]]; then
+          if [[ "$IS_STABLE" == true ]]; then
+            # Stable builds are stored in the GitHub Release, not on Pages.
+            # A stable release also starts a new nightly cycle.
             jq 'map(.versions = [(.versions // [])[] | select(((.sourceUrl? // "") | contains("/artifacts/")) | not)])' \
               pages/manifest.json > pages/manifest.tmp
             mv pages/manifest.tmp pages/manifest.json
             rm -f pages/artifacts/*.zip
+          else
+            # Keep nightly files from the currently deployed Pages site.
+            if [[ -f pages/manifest.json ]]; then
+              jq -r '.[].versions[]? | select((.sourceUrl? // "") | contains("/artifacts/")) | .sourceUrl' pages/manifest.json \
+                | while read -r URL; do
+                    FILE="pages/artifacts/$(basename "$URL")"
+                    curl -sSfL "$URL" -o "$FILE" || rm -f "$FILE"
+                  done
+            fi
+            cp "$ZIP_FILE" "pages/artifacts/${VERSION}.zip"
           fi
+
           GUID=$(grep '^guid:' build.yaml | awk '{print $2}' | tr -d '"')
           NAME=$(grep '^name:' build.yaml | awk '{print $2}' | sed 's/^"//;s/"$//')
           DESCRIPTION=$(grep '^overview:' build.yaml | sed 's/^overview: *//' | tr -d '"')
