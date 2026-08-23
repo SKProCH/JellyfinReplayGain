@@ -6,5 +6,6 @@ public sealed class ConfigurationTests {
     [Fact]
     public void PluginConfiguration_HasSafeDefaults() {
         new PluginConfiguration().Enabled.Should().BeTrue();
+        new PluginConfiguration().MeasurementMethod.Should().Be(MeasurementMethod.Ebur128);
     }
 }

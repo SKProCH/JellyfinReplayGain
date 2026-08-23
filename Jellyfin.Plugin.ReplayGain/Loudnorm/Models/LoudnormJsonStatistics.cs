@@ -18,5 +18,4 @@ internal sealed class LoudnormJsonStatistics {
     [JsonPropertyName("input_thresh")]
     [JsonConverter(typeof(LoudnormNumberConverter))]
     public double InputThresh { get; set; }
-
 }

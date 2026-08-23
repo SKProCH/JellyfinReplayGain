@@ -1,4 +1,4 @@
-namespace Jellyfin.Plugin.ReplayGain.Loudnorm.Models;
+namespace Jellyfin.Plugin.ReplayGain.Loudness.Models;
 
 public sealed class AudioStreamSignature
 {

@@ -1,5 +1,6 @@
+using Jellyfin.Plugin.ReplayGain.Loudness;
 using Jellyfin.Plugin.ReplayGain.Loudnorm;
-using Jellyfin.Plugin.ReplayGain.Loudnorm.Models;
+using Jellyfin.Plugin.ReplayGain.Loudness.Models;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.MediaInfo;
@@ -10,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.ReplayGain;
 
 public sealed class ReplayGainPlaybackInfoFilter(
-    LoudnormCacheStore loudnormCache,
+    LoudnessCacheStore loudnessCache,
     ILogger<ReplayGainPlaybackInfoFilter> logger) : IAsyncActionFilter {
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next) {
         var executedContext = await next().ConfigureAwait(false);
@@ -78,8 +79,8 @@ public sealed class ReplayGainPlaybackInfoFilter(
             })
             .ToArray();
         var signature = FileSignature.FromFile(mediaSource.Path);
-        if (!loudnormCache.TryGet(mediaSource.Path, signature, signatures, out var result)) {
-            reason = "no matching loudnorm cache entry exists";
+        if (!loudnessCache.TryGet(mediaSource.Path, signature, signatures, config.MeasurementMethod, out var result)) {
+            reason = "no matching loudness cache entry exists";
             return false;
         }
 
@@ -88,7 +89,7 @@ public sealed class ReplayGainPlaybackInfoFilter(
             ? result.Streams.FirstOrDefault(value => value.StreamIndex == selectedIndex.Value)
             : null;
         if (stream is null) {
-            reason = $"the loudnorm cache has no result for audio stream {selectedIndex?.ToString() ?? "<none>"}";
+            reason = $"the loudness cache has no result for audio stream {selectedIndex?.ToString() ?? "<none>"}";
             return false;
         }
 

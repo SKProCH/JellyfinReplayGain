@@ -1,7 +1,7 @@
 # Jellyfin ReplayGain Plugin
 
 This plugin for Jellyfin normalizes audio loudness during FFmpeg transcoding.  
-It analyzes audio streams in the background and applies cached loudnorm measurements during playback.
+It analyzes audio streams in the background and applies cached loudness measurements during playback.
 
 ## Why?
 
@@ -44,10 +44,11 @@ Plugin versions use the format `x.y.z.N`. The last digit (`N`) is the preview bu
   <sup>Except when the requested gain would exceed the configured true peak target; FFmpeg then falls back to dynamic normalization to prevent clipping</sup>
 - Provides an optional **Preserve dynamic range** mode using a peak-safe constant gain  
   <sup>If you are absulutely don't want the dynamic range altering</sup>
-- Analyzes every audio stream in local video files using FFmpeg loudnorm
+- Analyzes every audio stream in local video files using FFmpeg
+- Supports `ebur128` (fast measurement) and `loudnorm` (native two-pass measurement)
 - Runs analysis after a library scan, when the plugin is enabled, and through a scheduled task
 - Supports configurable integrated loudness, true peak, and loudness range targets
-- Requests two-pass linear loudnorm processing and lets FFmpeg fall back to dynamic normalization when required
+- Uses the measured values in the second-pass `loudnorm` filter; constant-gain mode remains available to preserve dynamic range
 - Does not modify media files or write ReplayGain tags
 
 ## Important technical things

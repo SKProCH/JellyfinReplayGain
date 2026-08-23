@@ -1,7 +1,11 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.RegularExpressions;
+using Jellyfin.Plugin.ReplayGain.Configuration;
 using System.Text.Json;
 using Jellyfin.Data.Enums;
+using Jellyfin.Plugin.ReplayGain.Loudness;
+using Jellyfin.Plugin.ReplayGain.Loudness.Models;
 using Jellyfin.Plugin.ReplayGain.Loudnorm.Models;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -12,8 +16,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.ReplayGain.Loudnorm;
 
-public sealed class LoudnormAnalyzer : IScheduledTask {
-    private readonly LoudnormCacheStore _cache;
+public sealed partial class LoudnormAnalyzer : IScheduledTask {
+    private readonly LoudnessCacheStore _cache;
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<LoudnormAnalyzer> _logger;
     private readonly IMediaEncoder _mediaEncoder;
@@ -21,7 +25,7 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
     public LoudnormAnalyzer(
         ILibraryManager libraryManager,
         IMediaEncoder mediaEncoder,
-        LoudnormCacheStore cache,
+        LoudnessCacheStore cache,
         ILogger<LoudnormAnalyzer> logger) {
         _libraryManager = libraryManager;
         _mediaEncoder = mediaEncoder;
@@ -70,9 +74,12 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
         var summary = new AnalysisSummary();
 
         _logger.LogInformation(
-            "ReplayGain loudnorm analysis started: {IndexedItemCount} audio/video item(s), {CandidateCount} local file(s), {UnavailableCount} unavailable or non-file item(s), target I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU, preserve dynamic range {PreserveDynamicRange}",
-            indexedItems.Count, items.Length, skippedUnavailable, ReplayGainPlugin.Instance!.Configuration.LoudnormIntegratedLoudness,
-            ReplayGainPlugin.Instance.Configuration.LoudnormTruePeak, ReplayGainPlugin.Instance.Configuration.LoudnormLoudnessRange,
+            "ReplayGain loudness analysis started: {IndexedItemCount} audio/video item(s), {CandidateCount} local file(s), {UnavailableCount} unavailable or non-file item(s), method {Method}, target I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU, preserve dynamic range {PreserveDynamicRange}",
+            indexedItems.Count, items.Length, skippedUnavailable, 
+            ReplayGainPlugin.Instance!.Configuration.MeasurementMethod,
+            ReplayGainPlugin.Instance.Configuration.LoudnormIntegratedLoudness,
+            ReplayGainPlugin.Instance.Configuration.LoudnormTruePeak, 
+            ReplayGainPlugin.Instance.Configuration.LoudnormLoudnessRange,
             ReplayGainPlugin.Instance.Configuration.PreserveDynamicRange);
 
         progress.Report(0);
@@ -109,26 +116,29 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             return AnalysisOutcome.NoAudioStreams;
         }
 
-        if (_cache.TryGet(path, signature, streamSignatures, out _)) {
+        if (_cache.TryGet(path, signature, streamSignatures, config.MeasurementMethod, out _)) {
             return AnalysisOutcome.Cached;
         }
 
         _logger.LogInformation(
-            "Starting loudnorm analysis for {Path}: {StreamCount} audio stream(s), target I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU",
-            path, audioStreams.Length, config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange);
+            "Starting {Method} analysis for {Path}: {StreamCount} audio stream(s), target I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU",
+            config.MeasurementMethod, path, audioStreams.Length, config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange);
 
         var filters = audioStreams.Select(ComposeFilter);
         var arguments = new List<string>
-            { "-hide_banner", "-i", path, "-filter_complex", string.Join(';', filters), "-vn", "-sn" };
+            { "-hide_banner", "-vn", "-sn", "-dn", "-i", path, "-filter_complex", string.Join(';', filters) };
         foreach (var index in Enumerable.Range(0, audioStreams.Length)) {
-            arguments.AddRange(["-map", $"[norm{index}]"]);
+            arguments.AddRange(["-map", $"[{(config.MeasurementMethod == MeasurementMethod.Ebur128 ? "measure" : "norm")}{index}]"]);
         }
 
         arguments.AddRange(["-f", "null", OperatingSystem.IsWindows() ? "NUL" : "/dev/null"]);
         var output = await RunAsync(arguments, cancellationToken).ConfigureAwait(false);
-        var results = ParseResults(output, audioStreams.Length);
+        var results = config.MeasurementMethod == MeasurementMethod.Ebur128
+            ? ParseEbur128Results(output, audioStreams.Length)
+            : ParseResults(output, audioStreams.Length);
         if (results is null) {
-            _logger.LogWarning("Could not parse {ExpectedCount} loudnorm result(s) for {Path}", audioStreams.Length, path);
+            _logger.LogWarning("Could not parse {ExpectedCount} {Method} result(s) for {Path}", 
+                audioStreams.Length, config.MeasurementMethod, path);
             return AnalysisOutcome.Failed;
         }
 
@@ -139,12 +149,13 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
         try {
             var after = FileSignature.FromFile(path);
             if (after != signature) {
-                _logger.LogInformation("Skipping loudnorm result because file changed during analysis: {Path}", path);
+                _logger.LogInformation("Skipping loudness result because file changed during analysis: {Path}", path);
                 return AnalysisOutcome.Changed;
             }
 
-            _cache.Put(path, signature, streamSignatures, results);
-            _logger.LogDebug("Saved loudnorm analysis for {Path}: {StreamCount} audio stream(s)", path, results.Count);
+            _cache.Put(path, signature, streamSignatures, results, config.MeasurementMethod);
+            _logger.LogDebug("Saved {Method} analysis for {Path}: {StreamCount} audio stream(s)", 
+                config.MeasurementMethod, path, results.Count);
             return AnalysisOutcome.Analyzed;
         }
         catch (IOException ex) {
@@ -152,11 +163,12 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             return AnalysisOutcome.CacheWriteFailed;
         }
 
-        string ComposeFilter(MediaStream _, int index) =>
-            $"[0:a:{index}]loudnorm=I={Format(config.LoudnormIntegratedLoudness)}" +
-            $":TP={Format(config.LoudnormTruePeak)}" +
-            $":LRA={Format(config.LoudnormLoudnessRange)}" +
-            $":print_format=json[norm{index}]";
+        string ComposeFilter(MediaStream _, int index) => config.MeasurementMethod == MeasurementMethod.Ebur128
+            ? $"[0:a:{index}]ebur128@rg{index}=peak=true:framelog=verbose[measure{index}]"
+            : $"[0:a:{index}]loudnorm=I={Format(config.LoudnormIntegratedLoudness)}" +
+              $":TP={Format(config.LoudnormTruePeak)}" +
+              $":LRA={Format(config.LoudnormLoudnessRange)}" +
+              $":print_format=json[norm{index}]";
 
         static AudioStreamSignature CreateSignature(MediaStream stream) => new() {
             Index = stream.Index,
@@ -193,8 +205,8 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
         return text;
     }
 
-    internal static List<LoudnormStreamResult>? ParseResults(string output, int expectedCount) {
-        var results = new List<LoudnormStreamResult>();
+    internal static List<LoudnessStreamResult>? ParseResults(string output, int expectedCount) {
+        var results = new List<LoudnessStreamResult>();
         var start = 0;
         while ((start = output.IndexOf('{', start)) >= 0) {
             var depth = 0;
@@ -230,7 +242,7 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             try {
                 var statistics = JsonSerializer.Deserialize<LoudnormJsonStatistics>(output[start..end]);
                 if (statistics is not null) {
-                    results.Add(new LoudnormStreamResult {
+                    results.Add(new LoudnessStreamResult {
                         StreamIndex = results.Count,
                         InputI = statistics.InputI,
                         InputTp = statistics.InputTp,
@@ -247,6 +259,34 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
         }
 
         return results.Count == expectedCount ? results : null;
+    }
+
+    internal static List<LoudnessStreamResult>? ParseEbur128Results(string output, int expectedCount) {
+        var results = new List<LoudnessStreamResult>();
+        foreach (Match match in Ebur128SummaryRegex.Matches(output)) {
+            var values = match.Groups["value"].Captures.Select(capture => ParseMeasurement(capture.Value)).ToArray();
+            if (values.Length == 5) {
+                results.Add(new LoudnessStreamResult {
+                    StreamIndex = results.Count,
+                    InputI = values[0],
+                    InputThresh = values[1],
+                    InputLra = values[2],
+                    InputTp = values[4]
+                });
+            }
+        }
+
+        return results.Count >= expectedCount ? results.Skip(results.Count - expectedCount).ToList() : null;
+    }
+
+    [GeneratedRegex(@"Integrated loudness:\s+I:\s*(?<value>-?(?:\d+(?:\.\d+)?|inf))\s+LUFS\s+Threshold:\s*(?<value>-?(?:\d+(?:\.\d+)?|inf))\s+LUFS.*?Loudness range:\s+LRA:\s*(?<value>-?(?:\d+(?:\.\d+)?|inf))\s+LU\s+Threshold:\s*(?<value>-?(?:\d+(?:\.\d+)?|inf))\s+LUFS.*?True peak:\s+Peak:\s*(?<value>-?(?:\d+(?:\.\d+)?|inf))\s+dBFS",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex Ebur128SummaryRegex { get; }
+
+    private static double ParseMeasurement(string value) {
+        return value.Equals("-inf", StringComparison.OrdinalIgnoreCase) ? -99 :
+            value.Equals("inf", StringComparison.OrdinalIgnoreCase) ? 0 :
+            double.Parse(value, CultureInfo.InvariantCulture);
     }
 
     private static string Format(double value) {

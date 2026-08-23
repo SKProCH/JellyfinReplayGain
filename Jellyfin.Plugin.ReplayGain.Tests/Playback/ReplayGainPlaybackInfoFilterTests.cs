@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.ReplayGain.Loudness;
 using Jellyfin.Plugin.ReplayGain.Loudnorm;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Model.Dto;
@@ -10,7 +11,7 @@ namespace Jellyfin.Plugin.ReplayGain.Tests.Playback;
 public sealed class ReplayGainPlaybackInfoFilterTests
 {
     [Fact]
-    public void RequiresNormalization_WhenLoudnormCacheIsMissing_ReturnsFalse()
+    public void RequiresNormalization_WhenLoudnessCacheIsMissing_ReturnsFalse()
     {
         var source = CreateAudioSource();
         var filter = CreateFilter();
@@ -55,7 +56,7 @@ public sealed class ReplayGainPlaybackInfoFilterTests
         var applicationPaths = new Mock<IApplicationPaths>();
         applicationPaths.Setup(paths => paths.DataPath).Returns(Path.GetTempPath());
         return new ReplayGainPlaybackInfoFilter(
-            new LoudnormCacheStore(applicationPaths.Object, NullLogger<LoudnormCacheStore>.Instance),
+            new LoudnessCacheStore(applicationPaths.Object, NullLogger<LoudnessCacheStore>.Instance),
             NullLogger<ReplayGainPlaybackInfoFilter>.Instance);
     }
 
