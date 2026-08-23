@@ -54,25 +54,40 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
 
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken) {
         if (!ReplayGainPlugin.IsEnabled) {
+            _logger.LogInformation("ReplayGain loudnorm analysis skipped because the plugin is disabled");
             return;
         }
 
         var query = new InternalItemsQuery {
-            IncludeItemTypes = [BaseItemKind.Audio, BaseItemKind.Video],
+            MediaTypes = [MediaType.Audio, MediaType.Video],
             Recursive = true
         };
-        var items = _libraryManager.GetItemList(query)
+        var indexedItems = _libraryManager.GetItemList(query);
+        var items = indexedItems
             .Where(item => item.IsFileProtocol && File.Exists(item.Path))
             .ToArray();
+        var skippedUnavailable = indexedItems.Count - items.Length;
+        var summary = new AnalysisSummary();
+
+        _logger.LogInformation(
+            "ReplayGain loudnorm analysis started: {IndexedItemCount} audio/video item(s), {CandidateCount} local file(s), {UnavailableCount} unavailable or non-file item(s), target I {TargetI} LUFS, TP {TargetTp} dBTP, LRA {TargetLra} LU, preserve dynamic range {PreserveDynamicRange}",
+            indexedItems.Count, items.Length, skippedUnavailable, ReplayGainPlugin.Instance!.Configuration.LoudnormIntegratedLoudness,
+            ReplayGainPlugin.Instance.Configuration.LoudnormTruePeak, ReplayGainPlugin.Instance.Configuration.LoudnormLoudnessRange,
+            ReplayGainPlugin.Instance.Configuration.PreserveDynamicRange);
 
         for (var index = 0; index < items.Length; index++) {
             cancellationToken.ThrowIfCancellationRequested();
-            await AnalyzeIfNeededAsync(items[index], cancellationToken).ConfigureAwait(false);
+            summary.Add(await AnalyzeIfNeededAsync(items[index], cancellationToken).ConfigureAwait(false));
             progress.Report((index + 1) * 100d / Math.Max(items.Length, 1));
         }
+
+        _logger.LogInformation(
+            "ReplayGain loudnorm analysis completed: {AnalyzedCount} analyzed, {CachedCount} cached, {NoAudioStreamCount} without audio streams, {UnreadableCount} unreadable, {FailedCount} failed, {ChangedCount} changed during analysis, {CacheWriteFailedCount} cache write failures",
+            summary.Analyzed, summary.Cached, summary.NoAudioStreams, summary.Unreadable, summary.Failed,
+            summary.Changed, summary.CacheWriteFailed);
     }
 
-    private async Task AnalyzeIfNeededAsync(BaseItem item, CancellationToken cancellationToken) {
+    private async Task<AnalysisOutcome> AnalyzeIfNeededAsync(BaseItem item, CancellationToken cancellationToken) {
         var config = ReplayGainPlugin.Instance!.Configuration;
         var path = Path.GetFullPath(item.Path);
         FileSignature signature;
@@ -80,7 +95,7 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             signature = FileSignature.FromFile(path);
         }
         catch (IOException) {
-            return;
+            return AnalysisOutcome.Unreadable;
         }
 
         var audioStreams = item.GetMediaStreams()
@@ -89,10 +104,14 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
         var streamSignatures = audioStreams
             .Select(CreateSignature)
             .ToArray();
-        if (audioStreams.Length == 0 || _cache.TryGet(path, signature, streamSignatures,
+        if (audioStreams.Length == 0) {
+            return AnalysisOutcome.NoAudioStreams;
+        }
+
+        if (_cache.TryGet(path, signature, streamSignatures,
                 config.LoudnormIntegratedLoudness, config.LoudnormTruePeak, config.LoudnormLoudnessRange,
                 config.PreserveDynamicRange, out _)) {
-            return;
+            return AnalysisOutcome.Cached;
         }
 
         _logger.LogDebug(
@@ -111,7 +130,8 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
         var output = await RunAsync(arguments, cancellationToken).ConfigureAwait(false);
         var results = ParseResults(output, audioStreams.Length);
         if (results is null) {
-            return;
+            _logger.LogWarning("Could not parse {ExpectedCount} loudnorm result(s) for {Path}", audioStreams.Length, path);
+            return AnalysisOutcome.Failed;
         }
 
         for (var index = 0; index < results.Count; index++) {
@@ -122,18 +142,18 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
             var after = FileSignature.FromFile(path);
             if (after != signature) {
                 _logger.LogInformation("Skipping loudnorm result because file changed during analysis: {Path}", path);
-                return;
+                return AnalysisOutcome.Changed;
             }
 
             _cache.Put(path, signature, streamSignatures, config.LoudnormIntegratedLoudness,
                 config.LoudnormTruePeak, config.LoudnormLoudnessRange, results);
             _logger.LogDebug("Saved loudnorm analysis for {Path}: {StreamCount} audio stream(s)", path, results.Count);
+            return AnalysisOutcome.Analyzed;
         }
         catch (IOException ex) {
             _logger.LogDebug(ex, "Could not save loudnorm result for {Path}", path);
+            return AnalysisOutcome.CacheWriteFailed;
         }
-
-        return;
 
         string ComposeFilter(MediaStream _, int index) =>
             $"[0:a:{index}]loudnorm=I={Format(config.LoudnormIntegratedLoudness)}" +
@@ -235,5 +255,51 @@ public sealed class LoudnormAnalyzer : IScheduledTask {
 
     private static string Format(double value) {
         return value.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
+    private enum AnalysisOutcome {
+        Analyzed,
+        Cached,
+        NoAudioStreams,
+        Unreadable,
+        Failed,
+        Changed,
+        CacheWriteFailed
+    }
+
+    private sealed class AnalysisSummary {
+        public int Analyzed { get; private set; }
+        public int Cached { get; private set; }
+        public int NoAudioStreams { get; private set; }
+        public int Unreadable { get; private set; }
+        public int Failed { get; private set; }
+        public int Changed { get; private set; }
+        public int CacheWriteFailed { get; private set; }
+
+        public void Add(AnalysisOutcome outcome) {
+            switch (outcome) {
+                case AnalysisOutcome.Analyzed:
+                    Analyzed++;
+                    break;
+                case AnalysisOutcome.Cached:
+                    Cached++;
+                    break;
+                case AnalysisOutcome.NoAudioStreams:
+                    NoAudioStreams++;
+                    break;
+                case AnalysisOutcome.Unreadable:
+                    Unreadable++;
+                    break;
+                case AnalysisOutcome.Failed:
+                    Failed++;
+                    break;
+                case AnalysisOutcome.Changed:
+                    Changed++;
+                    break;
+                case AnalysisOutcome.CacheWriteFailed:
+                    CacheWriteFailed++;
+                    break;
+            }
+        }
     }
 }
