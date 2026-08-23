@@ -143,7 +143,7 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
             }
         }
 
-        var gain = item?.NormalizationGain;
+        var gain = item is null ? null : ReplayGainNormalization.GetEffectiveGain(item);
         return gain.HasValue ? $"volume={Format(gain.Value)}dB" : null;
     }
 
