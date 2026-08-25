@@ -1,7 +1,9 @@
 # Jellyfin ReplayGain Plugin
 
 This plugin for Jellyfin normalizes audio loudness during FFmpeg transcoding.  
-It analyzes audio streams in the background and applies cached loudness measurements during playback.
+It analyzes audio streams in the background and uses cached loudness measurements to adjust loudness during playback.  
+
+Find this plugin useful? Consider starring this repository.
 
 ## Why?
 
@@ -34,10 +36,6 @@ This plugin allows to measure proper loudness and readjust it while encoding.
 2. Extract the zip into a new folder inside your Jellyfin server's `plugins` directory, e.g. `<Jellyfin Data Folder>/plugins/ReplayGain/`
 3. Restart your Jellyfin Server
 
-## Versioning
-
-Plugin versions use the format `x.y.z.N`. The last digit (`N`) is the preview build number - `0` indicates a stable release.
-
 ## Features
 
 - Doesn't alter the *dynamic range* of your videos, only adjusting the overall volume  
@@ -59,6 +57,14 @@ Plugin versions use the format `x.y.z.N`. The last digit (`N`) is the preview bu
 
 - The loudnorm analysis is slow, somewhat CPU heavy, and single-threaded, so processing a large media library may take a considerable amount of time
 - Normalization is applied before Jellyfin's device-specific audio filters, such as channel downmixing and downmix boost. This keeps the cached analysis independent of the playback device.
+
+## My other plugins
+
+[JellyfinStreamGenerator](https://github.com/SKProCH/JellyfinStreamGenerator) - adds a "Generate Stream URL" option to the context menu for choosing the video and audio codecs, streams, and subtitle options, etc
+
+## Versioning
+
+Plugin versions use the format `x.y.z.N`. The last digit (`N`) is the preview build number - `0` indicates a stable release.
 
 ## Building from source
 
