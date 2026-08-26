@@ -55,8 +55,10 @@
             var page = document.querySelector('.replayGainConfigForm').closest('.pluginConfigurationPage');
             page.addEventListener('pageshow', function () {
                 ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
-                     page.querySelector('#enabled').checked = config.Enabled === true;
-                     page.querySelector('#measurementMethod').value = String(config.MeasurementMethod ?? 0);
+                    page.querySelector('#enabled').checked = config.Enabled === true;
+                    var measurementMethods = { Ebur128: 0, Loudnorm: 1 };
+                    var measurementMethod = measurementMethods[config.MeasurementMethod] ?? Number(config.MeasurementMethod);
+                    page.querySelector('#measurementMethod').value = measurementMethod === 1 ? '1' : '0';
                     page.querySelector('#preserveDynamicRange').checked = config.PreserveDynamicRange === true;
                     page.querySelector('#integratedLoudness').value = config.LoudnormIntegratedLoudness ?? -16;
                     page.querySelector('#truePeak').value = config.LoudnormTruePeak ?? -1.5;
@@ -66,8 +68,9 @@
             page.querySelector('.replayGainConfigForm').addEventListener('submit', function (event) {
                 event.preventDefault();
                 ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
-                     config.Enabled = page.querySelector('#enabled').checked;
-                     config.MeasurementMethod = Number(page.querySelector('#measurementMethod').value);
+                    config.Enabled = page.querySelector('#enabled').checked;
+                    var measurementMethod = Number(page.querySelector('#measurementMethod').value);
+                    config.MeasurementMethod = measurementMethod === 1 ? 1 : 0;
                     config.PreserveDynamicRange = page.querySelector('#preserveDynamicRange').checked;
                     config.LoudnormIntegratedLoudness = Number(page.querySelector('#integratedLoudness').value);
                     config.LoudnormTruePeak = Number(page.querySelector('#truePeak').value);
