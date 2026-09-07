@@ -1,5 +1,32 @@
 <div class="page type-interior pluginConfigurationPage" data-role="page">
     <div class="content-primary">
+        <style>
+            .replayGainVisualizer { position: relative; margin: 1.5em 0 1em; padding: 2.5em 0 1.75em; }
+            .replayGainVisualizer .axis { position: absolute; top: 3.15em; left: 0; right: 0; height: 0.25em; border-radius: 0.2em; background: var(--theme-primary-color); opacity: 0.35; }
+            .replayGainVisualizer .axisLabel { position: absolute; top: 3.55em; font-size: 0.8em; opacity: 0.7; }
+            .replayGainVisualizer .axisLabel.left { left: 0; }
+            .replayGainVisualizer .axisLabel.right { right: 0; }
+            .replayGainVisualizer .loudnessBand { position: absolute; top: 2.5em; height: 1.55em; border: 2px solid #2196f3; border-radius: 0.3em; background: rgba(33, 150, 243, 0.2); box-sizing: border-box; }
+            .replayGainVisualizer .loudnessMarker { position: absolute; top: 2.1em; width: 0.8em; height: 2.35em; margin-left: -0.4em; border-radius: 0.2em; background: #4caf50; box-shadow: 0 0 0 2px var(--theme-background-color); cursor: ew-resize; touch-action: none; }
+            .replayGainVisualizer .peakMarker { position: absolute; top: 1.65em; height: 3.2em; border-left: 2px dashed #ff9800; }
+            .replayGainVisualizer .markerLabel { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; font-size: 0.9em; font-weight: 600; }
+            .replayGainVisualizer .peakLabel { position: absolute; top: 4.9em; transform: translateX(-50%); white-space: nowrap; font-size: 0.85em; }
+            .replayGainLoudnessControl { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 1em; }
+            .replayGainLoudnessControl .value { width: 6.5em; }
+            .replayGainSliderControl { display: grid; grid-template-columns: minmax(9em, 15em) 1fr auto; align-items: center; gap: 0.75em; margin: 0.75em 0; }
+            .replayGainSliderControl input[type="range"] { width: 100%; }
+            .replayGainSliderControl .value { min-width: 6.5em; text-align: right; font-variant-numeric: tabular-nums; }
+            .replayGainSliderLegend { display: flex; flex-wrap: wrap; gap: 0.75em 1.25em; font-size: 0.9em; }
+            .replayGainSliderLegend span::before { display: inline-block; width: 0.75em; height: 0.75em; margin-right: 0.35em; border-radius: 50%; content: ''; }
+            .replayGainSliderLegend .integratedLegend::before { background: #4caf50; }
+            .replayGainSliderLegend .truePeakLegend::before { background: #ff9800; }
+            .replayGainSliderLegend .rangeLegend::before { background: #2196f3; }
+            @media (max-width: 600px) {
+                .replayGainSliderControl { grid-template-columns: 1fr auto; }
+                .replayGainSliderControl input[type="range"] { grid-column: 1 / -1; grid-row: 2; }
+                .replayGainSliderControl .value { grid-column: 2; }
+            }
+        </style>
         <form class="replayGainConfigForm">
             <div class="verticalSection verticalSection-padding">
                 <h2 class="sectionTitle">ReplayGain</h2>
@@ -33,17 +60,41 @@
                     </div>
                 </div>
                 <div class="inputContainer">
-                    <input id="integratedLoudness" is="emby-input" step="0.1" type="number"/>
-                    <div class="fieldDescription">Target integrated loudness (LUFS)</div>
+                    <label>Normalization target</label>
+                    <div class="replayGainLoudnessControl">
+                        <div id="replayGainVisualizer" class="replayGainVisualizer" role="group" aria-label="Visualization of target loudness, dynamics and peak ceiling">
+                            <div class="axis"></div>
+                            <div class="axisLabel left">quieter</div>
+                            <div class="axisLabel right">louder</div>
+                            <div id="loudnessBand" class="loudnessBand"></div>
+                            <div id="loudnessMarker" class="loudnessMarker"></div>
+                            <div id="loudnessMarkerLabel" class="markerLabel">-16 LUFS</div>
+                            <div id="peakMarker" class="peakMarker"></div>
+                            <div id="peakMarkerLabel" class="peakLabel">-1.5 dBTP peak ceiling</div>
+                        </div>
+                        <input id="integratedLoudness" class="value" is="emby-input" min="-30" max="-5" step="0.1" type="number" aria-label="Target integrated loudness"/>
+                    </div>
+                    <div class="replayGainSliderLegend">
+                        <span class="integratedLegend">Average loudness</span>
+                        <span class="rangeLegend">Desired dynamics</span>
+                        <span class="truePeakLegend">Peak protection</span>
+                    </div>
+                    <div class="fieldDescription">The average level is brought to LUFS, dynamics are preserved within the blue range, and peaks stay below the orange limit.</div>
+                    <div class="replayGainSliderControl">
+                        <label for="loudnessRangeSlider">Loudness range</label>
+                        <input id="loudnessRangeSlider" type="range" min="1" max="20" step="0.1" value="11" aria-label="Target loudness range"/>
+                        <input id="loudnessRange" class="value" is="emby-input" min="1" max="20" step="0.1" type="number" aria-label="Target loudness range"/>
+                    </div>
+                    <div class="replayGainSliderControl">
+                        <label for="truePeakSlider">True peak ceiling</label>
+                        <input id="truePeakSlider" type="range" min="-9" max="0" step="0.1" value="-1.5" aria-label="Target true peak"/>
+                        <input id="truePeak" class="value" is="emby-input" min="-9" max="0" step="0.1" type="number" aria-label="Target true peak"/>
+                    </div>
                 </div>
-                <div class="inputContainer">
-                    <input id="truePeak" is="emby-input" step="0.1" type="number"/>
-                    <div class="fieldDescription">Target true peak (dBTP)</div>
-                </div>
-                <div class="inputContainer">
-                    <input id="loudnessRange" is="emby-input" step="0.1" type="number"/>
-                    <div class="fieldDescription">Target loudness range (LU)</div>
-                </div>
+                <details>
+                    <summary>Precise target values</summary>
+                    <div class="fieldDescription">The precise value fields are shown beside each control.</div>
+                </details>
                 <div>
                     <button class="raised button-submit block emby-button" is="emby-button" type="submit">Save</button>
                 </div>
@@ -63,8 +114,102 @@
                     page.querySelector('#integratedLoudness').value = config.LoudnormIntegratedLoudness ?? -16;
                     page.querySelector('#truePeak').value = config.LoudnormTruePeak ?? -1.5;
                     page.querySelector('#loudnessRange').value = config.LoudnormLoudnessRange ?? 11;
+                    updateDynamicRangeState();
+                    syncSlidersFromValues();
                 });
             });
+
+            var sliderInputs = {
+                truePeak: page.querySelector('#truePeakSlider'),
+                loudnessRange: page.querySelector('#loudnessRangeSlider')
+            };
+            var visualizer = page.querySelector('#replayGainVisualizer');
+            var loudnessMarker = page.querySelector('#loudnessMarker');
+
+            function formatValue(value) {
+                return Number(value).toFixed(1).replace(/\.0$/, '');
+            }
+
+            function updateSliderDisplay() {
+                var integratedLoudness = Number(page.querySelector('#integratedLoudness').value);
+                var truePeak = Number(page.querySelector('#truePeak').value);
+                var loudnessRange = Number(page.querySelector('#loudnessRange').value);
+                updateVisualization(integratedLoudness, truePeak, loudnessRange);
+            }
+
+            function updateVisualization(integratedLoudness, truePeak, loudnessRange) {
+                var loudnessPosition = ((integratedLoudness + 30) / 25) * 100;
+                var rangeWidth = Math.min((loudnessRange / 25) * 100, 100);
+                var rangeStart = Math.max(loudnessPosition - rangeWidth / 2, 0);
+                var peakPosition = ((truePeak + 9) / 9) * 100;
+                var band = page.querySelector('#loudnessBand');
+                var marker = page.querySelector('#loudnessMarker');
+                var markerLabel = page.querySelector('#loudnessMarkerLabel');
+                var peak = page.querySelector('#peakMarker');
+                var peakLabel = page.querySelector('#peakMarkerLabel');
+                band.style.left = rangeStart + '%';
+                band.style.width = Math.min(rangeWidth, 100 - rangeStart) + '%';
+                marker.style.left = loudnessPosition + '%';
+                markerLabel.style.left = loudnessPosition + '%';
+                markerLabel.textContent = formatValue(integratedLoudness) + ' LUFS';
+                peak.style.left = peakPosition + '%';
+                peakLabel.style.left = peakPosition + '%';
+                peakLabel.textContent = formatValue(truePeak) + ' dBTP peak ceiling';
+            }
+
+            function syncSlidersFromValues() {
+                sliderInputs.truePeak.value = page.querySelector('#truePeak').value;
+                sliderInputs.loudnessRange.value = page.querySelector('#loudnessRange').value;
+                updateSliderDisplay();
+            }
+
+            function syncValueFromSlider(name) {
+                page.querySelector('#' + name).value = sliderInputs[name].value;
+                updateSliderDisplay();
+            }
+
+            function setIntegratedLoudnessFromPointer(event) {
+                var bounds = visualizer.getBoundingClientRect();
+                var position = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+                var value = -30 + position * 25;
+                page.querySelector('#integratedLoudness').value = (Math.round(value * 10) / 10).toFixed(1);
+                updateSliderDisplay();
+            }
+
+            function updateDynamicRangeState() {
+                var preserveDynamicRange = page.querySelector('#preserveDynamicRange').checked;
+                var loudnessRange = page.querySelector('#loudnessRange');
+                loudnessRange.disabled = preserveDynamicRange;
+                sliderInputs.loudnessRange.disabled = preserveDynamicRange;
+                loudnessRange.closest('.inputContainer').style.opacity = preserveDynamicRange ? '0.6' : '';
+            }
+
+            Object.keys(sliderInputs).forEach(function (name) {
+                sliderInputs[name].addEventListener('input', function () {
+                    syncValueFromSlider(name);
+                });
+            });
+            loudnessMarker.addEventListener('pointerdown', function (event) {
+                loudnessMarker.setPointerCapture(event.pointerId);
+                setIntegratedLoudnessFromPointer(event);
+            });
+            loudnessMarker.addEventListener('pointermove', function (event) {
+                if (loudnessMarker.hasPointerCapture(event.pointerId)) {
+                    setIntegratedLoudnessFromPointer(event);
+                }
+            });
+            loudnessMarker.addEventListener('pointerup', function (event) {
+                loudnessMarker.releasePointerCapture(event.pointerId);
+            });
+            visualizer.addEventListener('pointerdown', function (event) {
+                if (event.target !== loudnessMarker) {
+                    setIntegratedLoudnessFromPointer(event);
+                }
+            });
+            page.querySelectorAll('#integratedLoudness, #truePeak, #loudnessRange').forEach(function (input) {
+                input.addEventListener('input', syncSlidersFromValues);
+            });
+            page.querySelector('#preserveDynamicRange').addEventListener('change', updateDynamicRangeState);
             page.querySelector('.replayGainConfigForm').addEventListener('submit', function (event) {
                 event.preventDefault();
                 ApiClient.getPluginConfiguration('7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91').then(function (config) {
