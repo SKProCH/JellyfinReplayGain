@@ -6,14 +6,6 @@ on:
     tags: ['v*']
     paths:
       - 'Jellyfin.Plugin.ReplayGain/**'
-      - 'Jellyfin.Plugin.ReplayGain.Tests/**'
-      - 'build.yaml'
-      - '.github/workflows/release.yml'
-  pull_request:
-    branches: [master]
-    paths:
-      - 'Jellyfin.Plugin.ReplayGain/**'
-      - 'Jellyfin.Plugin.ReplayGain.Tests/**'
       - 'build.yaml'
       - '.github/workflows/release.yml'
   workflow_dispatch:
@@ -28,7 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
-      semver: ${{ steps.version.outputs.semver }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,12 +36,10 @@ jobs:
         shell: bash
         run: |
           SEMVER=$(minver -t v -p preview -v error)
-          echo "semver=${SEMVER}" >> "$GITHUB_OUTPUT"
           BASE=$(echo "$SEMVER" | sed 's/-.*//')
-          if echo "$SEMVER" | grep -q '-'; then
-            # JPRM requires a four-part numeric version. Use the number of
-            # commits after the latest version tag so it increases without
-            # creating a tag for every nightly build.
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            JPRM_VERSION="${BASE}.0"
+          else
             LAST_STABLE_TAG=$(git tag --merged HEAD --sort=-creatordate \
               | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/ { print; exit }')
             if [[ -n "$LAST_STABLE_TAG" ]]; then
@@ -59,8 +48,6 @@ jobs:
               NIGHTLY_NUMBER=$(git rev-list --count HEAD)
             fi
             JPRM_VERSION="${BASE}.${NIGHTLY_NUMBER}"
-          else
-            JPRM_VERSION="${BASE}.0"
           fi
           echo "version=${JPRM_VERSION}" >> "$GITHUB_OUTPUT"
       - name: Build Jellyfin Plugin
@@ -82,9 +69,6 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: replaygain-build-artifact
@@ -97,10 +81,10 @@ jobs:
           generate_release_notes: true
           prerelease: false
 
-  publish-manifest:
+  publish-manifests:
     needs: [build, release]
     runs-on: ubuntu-latest
-    if: ${{ always() && github.event_name != 'pull_request' && needs.build.result == 'success' && (needs.release.result == 'success' || (needs.release.result == 'skipped' && github.ref_type != 'tag')) }}
+    if: ${{ always() && needs.build.result == 'success' && (needs.release.result == 'success' || (needs.release.result == 'skipped' && github.ref_type != 'tag')) }}
     concurrency:
       group: replaygain-pages
       cancel-in-progress: false
@@ -113,17 +97,18 @@ jobs:
         with:
           name: replaygain-build-artifact
           path: ./release-assets
-      - name: Build manifest
+      - name: Build manifests
         env:
           CHANGELOG: ${{ github.event.head_commit.message || '' }}
         shell: bash
         run: |
-          mkdir -p pages
+          mkdir -p pages/artifacts
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           curl -sSfL "${PAGES_URL}/manifest.json" -o pages/manifest.json || echo '[]' > pages/manifest.json
-          if ! jq -e 'type == "array"' pages/manifest.json >/dev/null 2>&1; then
-            echo '[]' > pages/manifest.json
-          fi
+          curl -sSfL "${PAGES_URL}/manifest-nightly.json" -o pages/manifest-nightly.json || echo '[]' > pages/manifest-nightly.json
+          if ! jq -e 'type == "array"' pages/manifest.json >/dev/null 2>&1; then echo '[]' > pages/manifest.json; fi
+          if ! jq -e 'type == "array"' pages/manifest-nightly.json >/dev/null 2>&1; then echo '[]' > pages/manifest-nightly.json; fi
+
           ZIP_FILE=$(find ./release-assets -maxdepth 1 -name '*.zip' -print -quit)
           ZIP_NAME=$(basename "$ZIP_FILE")
           CHECKSUM=$(md5sum "$ZIP_FILE" | awk '{print $1}')
@@ -136,24 +121,36 @@ jobs:
           else
             SOURCE_URL="${PAGES_URL}/artifacts/${VERSION}.zip"
           fi
-          mkdir -p pages/artifacts
+
+          jq -r '.[].versions[]? | select((.sourceUrl? // "") | contains("/artifacts/")) | .sourceUrl' pages/manifest-nightly.json \
+            | while read -r URL; do
+                curl -sSfL "$URL" -o "pages/artifacts/$(basename "$URL")" || rm -f "pages/artifacts/$(basename "$URL")"
+              done
 
           if [[ "$IS_STABLE" == true ]]; then
-            # Stable builds are stored in the GitHub Release, not on Pages.
-            # A stable release also starts a new nightly cycle.
-            jq 'map(.versions = [(.versions // [])[] | select(((.sourceUrl? // "") | contains("/artifacts/")) | not)])' \
+            MANIFEST_FILE="pages/manifest.json"
+            # Migrate nightly entries from the old combined manifest before cleaning it.
+            jq 'map(.versions = [(.versions // [])[] | select((.sourceUrl? // "") | contains("/artifacts/"))] | select((.versions | length) > 0))' \
+              pages/manifest.json > pages/legacy-nightly.tmp
+            jq -s '
+              .[0] as $legacy |
+              .[1] as $nightly |
+              reduce $legacy[] as $legacyPlugin ($nightly;
+                if (map(.guid) | index($legacyPlugin.guid)) != null then
+                  map(if .guid == $legacyPlugin.guid then
+                    .versions = (($legacyPlugin.versions // []) + (.versions // []) | unique_by(.version))
+                  else . end)
+                else . + [$legacyPlugin] end
+              )
+            ' pages/legacy-nightly.tmp pages/manifest-nightly.json > pages/manifest-nightly.tmp
+            mv pages/manifest-nightly.tmp pages/manifest-nightly.json
+            rm pages/legacy-nightly.tmp
+            # Remove nightly entries left by the previous combined manifest format.
+            jq 'map(.versions = [(.versions // [])[] | select((.sourceUrl? // "") | contains("/artifacts/") | not)])' \
               pages/manifest.json > pages/manifest.tmp
             mv pages/manifest.tmp pages/manifest.json
-            rm -f pages/artifacts/*.zip
           else
-            # Keep nightly files from the currently deployed Pages site.
-            if [[ -f pages/manifest.json ]]; then
-              jq -r '.[].versions[]? | select((.sourceUrl? // "") | contains("/artifacts/")) | .sourceUrl' pages/manifest.json \
-                | while read -r URL; do
-                    FILE="pages/artifacts/$(basename "$URL")"
-                    curl -sSfL "$URL" -o "$FILE" || rm -f "$FILE"
-                  done
-            fi
+            MANIFEST_FILE="pages/manifest-nightly.json"
             cp "$ZIP_FILE" "pages/artifacts/${VERSION}.zip"
           fi
 
@@ -163,13 +160,29 @@ jobs:
           OWNER=$(grep '^owner:' build.yaml | awk '{print $2}' | tr -d '"')
           CATEGORY=$(grep '^category:' build.yaml | awk '{print $2}' | tr -d '"')
           TARGET_ABI=$(grep '^targetAbi:' build.yaml | awk '{print $2}' | tr -d '"')
-          NEW_VERSION=$(jq -n --arg ver "${{ needs.build.outputs.version }}" --arg changelog "$CHANGELOG" --arg targetAbi "$TARGET_ABI" --arg sourceUrl "$SOURCE_URL" --arg checksum "$CHECKSUM" --arg timestamp "$TIMESTAMP" '{version:$ver,changelog:$changelog,targetAbi:$targetAbi,sourceUrl:$sourceUrl,checksum:$checksum,timestamp:$timestamp}')
-          if [ "$(jq --arg guid "$GUID" 'map(select(.guid == $guid)) | length' pages/manifest.json)" -gt 0 ]; then
-            jq --arg guid "$GUID" --argjson newver "$NEW_VERSION" 'map(if .guid == $guid then .versions = [$newver] + .versions else . end)' pages/manifest.json > pages/manifest.tmp
+          NEW_VERSION=$(jq -n --arg ver "$VERSION" --arg changelog "$CHANGELOG" --arg targetAbi "$TARGET_ABI" --arg sourceUrl "$SOURCE_URL" --arg checksum "$CHECKSUM" --arg timestamp "$TIMESTAMP" '{version:$ver,changelog:$changelog,targetAbi:$targetAbi,sourceUrl:$sourceUrl,checksum:$checksum,timestamp:$timestamp}')
+
+          if [ "$(jq --arg guid "$GUID" 'map(select(.guid == $guid)) | length' "$MANIFEST_FILE")" -gt 0 ]; then
+            jq --arg guid "$GUID" --argjson newver "$NEW_VERSION" 'map(if .guid == $guid then .versions = [$newver] + .versions else . end)' "$MANIFEST_FILE" > pages/manifest.tmp
           else
-            jq --arg guid "$GUID" --arg name "$NAME" --arg description "$DESCRIPTION" --arg overview "$DESCRIPTION" --arg owner "$OWNER" --arg category "$CATEGORY" --argjson newver "$NEW_VERSION" '. += [{guid:$guid,name:$name,description:$description,overview:$overview,owner:$owner,category:$category,versions:[$newver]}]' pages/manifest.json > pages/manifest.tmp
+            jq --arg guid "$GUID" --arg name "$NAME" --arg description "$DESCRIPTION" --arg owner "$OWNER" --arg category "$CATEGORY" --argjson newver "$NEW_VERSION" '. += [{guid:$guid,name:$name,description:$description,overview:$description,owner:$owner,category:$category,versions:[$newver]}]' "$MANIFEST_FILE" > pages/manifest.tmp
           fi
-          mv pages/manifest.tmp pages/manifest.json
+          mv pages/manifest.tmp "$MANIFEST_FILE"
+
+          # The nightly feed includes both nightly and stable versions.
+          jq -s '
+            .[0] as $stable |
+            .[1] as $nightly |
+            reduce $stable[] as $stablePlugin ($nightly;
+              if (map(.guid) | index($stablePlugin.guid)) != null then
+                map(if .guid == $stablePlugin.guid then
+                  .versions = (($stablePlugin.versions // []) + (.versions // []) | unique_by(.version))
+                else . end)
+              else . + [$stablePlugin] end
+            )
+          ' pages/manifest.json pages/manifest-nightly.json > pages/manifest-nightly.tmp
+          mv pages/manifest-nightly.tmp pages/manifest-nightly.json
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: pages

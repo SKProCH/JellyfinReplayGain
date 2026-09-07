@@ -23,9 +23,13 @@ This plugin allows to measure proper loudness and readjust it while encoding.
 ### Via Plugin Repository (recommended)
 
 1. In Jellyfin, go to **Dashboard -> Plugins -> Repositories**
-2. Add a new repository with the URL:
+2. Add a new repository with the stable manifest URL:
    ```
    https://skproch.github.io/JellyfinReplayGain/manifest.json
+   ```
+   Nightly builds are available from a separate repository manifest:
+   ```
+   https://skproch.github.io/JellyfinReplayGain/manifest-nightly.json
    ```
 3. Go to **Catalog**, find **ReplayGain** and install it
 4. Restart your Jellyfin Server
