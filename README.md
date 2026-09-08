@@ -53,6 +53,8 @@ This plugin allows to measure proper loudness and readjust it while encoding.
 - Uses the measured values in the second-pass `loudnorm` filter; constant-gain mode remains available to preserve dynamic range
 - Does not modify media files or write ReplayGain tags
 
+<img width="818" height="828" alt="image" src="https://github.com/user-attachments/assets/ad6d43aa-016f-4e4d-93af-0524393e6286" />
+
 ## Important technical things
 
 > [!IMPORTANT]
