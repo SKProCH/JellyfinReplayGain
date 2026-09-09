@@ -114,10 +114,9 @@ jobs:
           CHECKSUM=$(md5sum "$ZIP_FILE" | awk '{print $1}')
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           VERSION="${{ needs.build.outputs.version }}"
-          IS_STABLE=false
-          if [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            IS_STABLE=true
-            SOURCE_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}"
+          IS_STABLE="${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}"
+          if [[ "$IS_STABLE" == true ]]; then
+            SOURCE_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
           else
             SOURCE_URL="${PAGES_URL}/artifacts/${VERSION}.zip"
           fi
