@@ -1,5 +1,5 @@
 ---
-name: "ReplayGain"
+name: "Replay Gain"
 guid: "7a0dc2b9-5e9b-4f4f-8e68-1d0a2b7e4c91"
 version: "0.0.0.1"
 targetAbi: "10.11.0.0"

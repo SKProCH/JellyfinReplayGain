@@ -27,7 +27,7 @@ public sealed class ReplayGainPlugin : BasePlugin<PluginConfiguration>, IHasWebP
     public static ReplayGainPlugin? Instance { get; private set; }
 
     public override string Name {
-        get => "ReplayGain";
+        get => "Replay Gain";
     }
 
     public override string Description {

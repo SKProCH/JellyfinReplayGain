@@ -1,4 +1,4 @@
-# Jellyfin ReplayGain Plugin
+# Jellyfin Replay Gain Plugin
 
 This plugin for Jellyfin normalizes audio loudness during FFmpeg transcoding.  
 It analyzes audio streams in the background and uses cached loudness measurements to adjust loudness during playback.  
@@ -27,13 +27,13 @@ This plugin allows to measure proper loudness and readjust it while encoding.
    ```
    https://skproch.github.io/JellyfinReplayGain/manifest.json
    ```
-3. Go to **Catalog**, find **ReplayGain** and install it
+3. Go to **Catalog**, find **Replay Gain** and install it
 4. Restart your Jellyfin Server
 
 ### Manual Installation
 
 1. Download the latest plugin zip from [GitHub Releases](https://github.com/SKProCH/JellyfinReplayGain/releases)
-2. Extract the zip into a new folder inside your Jellyfin server's `plugins` directory, e.g. `<Jellyfin Data Folder>/plugins/ReplayGain/`
+2. Extract the zip into a new folder inside your Jellyfin server's `plugins` directory, e.g. `<Jellyfin Data Folder>/plugins/Replay Gain/`
 3. Restart your Jellyfin Server
 
 ## Features
