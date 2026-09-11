@@ -79,7 +79,7 @@ jobs:
     needs: [build, release]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pages: write
       id-token: write
     concurrency:
@@ -96,10 +96,18 @@ jobs:
           path: ./release-assets
       - name: Build manifest
         env:
-          CHANGELOG: ${{ github.event.head_commit.message || '' }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          CHANGELOG=$(gh release view "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" --json body --jq '.body // ""')
+          if [[ -z "${CHANGELOG//[[:space:]]/}" ]]; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" --generate-notes
+            CHANGELOG=$(gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" --json body --jq '.body // ""')
+          fi
           mkdir -p pages
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           MANIFEST_STATUS=$(curl -sS -L --retry 3 --retry-all-errors \
