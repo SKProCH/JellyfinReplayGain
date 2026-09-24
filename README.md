@@ -17,7 +17,7 @@ This plugin allows to measure proper loudness and readjust it while encoding.
 
 ### Requirements
 
-- **Jellyfin 10.11.x**
+- **Jellyfin 12.x**
 - Local media files accessible to the Jellyfin server for background analysis
 
 ### Via Plugin Repository (recommended)
@@ -74,4 +74,4 @@ Plugin versions use the format `x.y.z.n`. `x.y` - jellyfin version ABI.
 dotnet build
 ```
 
-The compiled library will be available at `Jellyfin.Plugin.ReplayGain/bin/Debug/net9.0/Jellyfin.Plugin.ReplayGain.dll`.
+The compiled library will be available at `Jellyfin.Plugin.ReplayGain/bin/Debug/net10.0/Jellyfin.Plugin.ReplayGain.dll`.
