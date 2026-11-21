@@ -333,9 +333,13 @@
                         <input id="enabled" is="emby-checkbox" type="checkbox"/>
                         <span>Enable loudness normalization</span>
                     </label>
-                    <div class="fieldDescription">Analyzes audio streams with FFmpeg and applies normalization
-                        while Jellyfin transcodes audio. Direct Play remains available until analysis completes.
-                    </div>
+-                    <div class="fieldDescription">Analyzes audio streams with FFmpeg and applies normalization
+-                        while Jellyfin transcodes audio. Direct Play remains available until analysis completes.
+-                    </div>
++                    <div class="fieldDescription">Analyzes audio streams with FFmpeg and applies normalization
++                        while Jellyfin transcodes audio. When early normalization is enabled, Direct Play is disabled
++                        before analysis completes so one-pass loudnorm can be applied.
++                    </div>
                 </div>
                 <div class="inputContainer">
                     <select id="measurementMethod" is="emby-select">
@@ -345,6 +349,13 @@
                     <div class="fieldDescription">Measurement method. ebur128 is 5-8 times faster, but unnoticeable less
                         precise.
                     </div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input id="normalizeBeforeAnalysis" is="emby-checkbox" type="checkbox"/>
+                        <span>Normalize before analysis completes</span>
+                    </label>
+                    <div class="fieldDescription">Uses one-pass loudnorm when no cached analysis is available. It starts normalization immediately, but may temporarily change the dynamic range and is less accurate than the analyzed result. Disabled when Preserve dynamic range is enabled.</div>
                 </div>
                 <div class="fieldDescription">Uses background FFmpeg analysis for audio streams.
                     Direct Play is disabled only after a valid measurement is available.
@@ -436,6 +447,7 @@
                     var measurementMethods = {Ebur128: 0, Loudnorm: 1};
                     var measurementMethod = measurementMethods[config.MeasurementMethod] ?? Number(config.MeasurementMethod);
                     page.querySelector('#measurementMethod').value = measurementMethod === 1 ? '1' : '0';
+                    page.querySelector('#normalizeBeforeAnalysis').checked = config.NormalizeBeforeAnalysis !== false;
                     page.querySelector('#preserveDynamicRange').checked = config.PreserveDynamicRange === true;
                     page.querySelector('#integratedLoudness').value = config.LoudnormIntegratedLoudness ?? -16;
                     page.querySelector('#truePeak').value = config.LoudnormTruePeak ?? -1.5;
@@ -590,15 +602,19 @@
 
             function updateDynamicRangeState() {
                 var preserveDynamicRange = page.querySelector('#preserveDynamicRange').checked;
+                var normalizeBeforeAnalysis = page.querySelector('#normalizeBeforeAnalysis');
+                if (preserveDynamicRange) {
+                    normalizeBeforeAnalysis.checked = false;
+                }
                 loudnessRangeBand.classList.toggle('is-hidden', preserveDynamicRange);
                 page.querySelector('#loudnessRangeLabel').classList.toggle('is-hidden', preserveDynamicRange);
                 page.querySelector('#loudnessRangeControl').classList.toggle('is-disabled', preserveDynamicRange);
                 loudnessRangeInput.disabled = preserveDynamicRange;
+                normalizeBeforeAnalysis.disabled = preserveDynamicRange;
                 loudnessRangeBand.setAttribute('aria-disabled', preserveDynamicRange);
                 loudnessRangeBand.setAttribute('aria-label', preserveDynamicRange
                     ? 'Loudness range, not used in preserve dynamic range mode'
                     : 'Maximum loudness range');
-                loudnessRangeBand.setAttribute('aria-orientation', 'vertical');
                 updateSliderDisplay();
             }
 
@@ -698,6 +714,8 @@
                     config.Enabled = page.querySelector('#enabled').checked;
                     var measurementMethod = Number(page.querySelector('#measurementMethod').value);
                     config.MeasurementMethod = measurementMethod === 1 ? 1 : 0;
+                    config.NormalizeBeforeAnalysis = !page.querySelector('#preserveDynamicRange').checked
+                        && page.querySelector('#normalizeBeforeAnalysis').checked;
                     config.PreserveDynamicRange = page.querySelector('#preserveDynamicRange').checked;
                     config.LoudnormIntegratedLoudness = Number(page.querySelector('#integratedLoudness').value);
                     config.LoudnormTruePeak = Number(page.querySelector('#truePeak').value);

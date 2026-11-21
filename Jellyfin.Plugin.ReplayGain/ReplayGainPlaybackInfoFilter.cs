@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.ReplayGain.Configuration;
 using Jellyfin.Plugin.ReplayGain.Loudness;
 using Jellyfin.Plugin.ReplayGain.Loudnorm;
 using Jellyfin.Plugin.ReplayGain.Loudness.Models;
@@ -12,7 +13,8 @@ namespace Jellyfin.Plugin.ReplayGain;
 
 public sealed class ReplayGainPlaybackInfoFilter(
     LoudnessCacheStore loudnessCache,
-    ILogger<ReplayGainPlaybackInfoFilter> logger) : IAsyncActionFilter {
+    ILogger<ReplayGainPlaybackInfoFilter> logger,
+    Func<PluginConfiguration>? getConfiguration = null) : IAsyncActionFilter {
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next) {
         var executedContext = await next().ConfigureAwait(false);
         if (!ReplayGainPlugin.IsEnabled || !TryGetPlaybackInfo(executedContext.Result, out var playbackInfo)) {
@@ -67,7 +69,7 @@ public sealed class ReplayGainPlaybackInfoFilter(
             return false;
         }
 
-        var config = ReplayGainPlugin.Instance!.Configuration;
+        var config = getConfiguration?.Invoke() ?? ReplayGainPlugin.Instance!.Configuration;
         var signatures = mediaSource.MediaStreams
             .Where(stream => stream.Type == MediaStreamType.Audio)
             .Select(stream => new AudioStreamSignature {
@@ -80,6 +82,11 @@ public sealed class ReplayGainPlaybackInfoFilter(
             .ToArray();
         var signature = FileSignature.FromFile(mediaSource.Path);
         if (!loudnessCache.TryGet(mediaSource.Path, signature, signatures, config.MeasurementMethod, out var result)) {
+            if (config.NormalizeBeforeAnalysis && !config.PreserveDynamicRange) {
+                reason = "no matching loudness cache entry exists; using one-pass loudnorm fallback";
+                return true;
+            }
+
             reason = "no matching loudness cache entry exists";
             return false;
         }
@@ -89,6 +96,11 @@ public sealed class ReplayGainPlaybackInfoFilter(
             ? result.Streams.FirstOrDefault(value => value.StreamIndex == selectedIndex.Value)
             : null;
         if (stream is null) {
+            if (config.NormalizeBeforeAnalysis && !config.PreserveDynamicRange) {
+                reason = $"the loudness cache has no result for audio stream {selectedIndex?.ToString() ?? "<none>"}; using one-pass loudnorm fallback";
+                return true;
+            }
+
             reason = $"the loudness cache has no result for audio stream {selectedIndex?.ToString() ?? "<none>"}";
             return false;
         }

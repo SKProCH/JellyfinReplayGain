@@ -7,6 +7,8 @@ public sealed class PluginConfiguration : BasePluginConfiguration {
 
     public MeasurementMethod MeasurementMethod { get; set; } = MeasurementMethod.Ebur128;
 
+    public bool NormalizeBeforeAnalysis { get; set; } = false;
+
     public bool PreserveDynamicRange { get; set; } = false;
 
     public double LoudnormIntegratedLoudness { get; set; } = -16.0;

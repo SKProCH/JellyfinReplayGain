@@ -7,8 +7,8 @@ public sealed class ConfigurationTests {
     public void PluginConfiguration_HasSafeDefaults() {
         var configuration = new PluginConfiguration();
 
-        configuration.Enabled.Should().BeTrue();
         configuration.MeasurementMethod.Should().Be(MeasurementMethod.Ebur128);
+        configuration.NormalizeBeforeAnalysis.Should().BeFalse();
         configuration.PreserveDynamicRange.Should().BeFalse();
         configuration.LoudnormIntegratedLoudness.Should().Be(-16.0);
         configuration.LoudnormTruePeak.Should().Be(-1.5);

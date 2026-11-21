@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.ReplayGain.Configuration;
 using System.Globalization;
 using System.Text;
 using Jellyfin.Plugin.ReplayGain.Loudness;
@@ -118,10 +119,13 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
     }
 
     private string? GetFilter(StreamState state) {
+        if (string.IsNullOrWhiteSpace(state.MediaPath) || state.AudioStream is null) {
+            return null;
+        }
+
+        var config = ReplayGainPlugin.Instance!.Configuration;
         var item = TryGetItem(state);
-        if (item is not null
-            && !string.IsNullOrWhiteSpace(state.MediaPath)
-            && state.AudioStream is not null) {
+        if (item is not null) {
             var signature = FileSignature.FromFile(state.MediaPath);
             var streamSignatures = item.GetMediaStreams()
                 .Where(value => value.Type == MediaStreamType.Audio)
@@ -133,7 +137,6 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
                     SampleRate = value.SampleRate
                 })
                 .ToArray();
-            var config = ReplayGainPlugin.Instance!.Configuration;
             if (_loudnessCache.TryGet(state.MediaPath, signature, streamSignatures, config.MeasurementMethod, out var result)) {
                 var stream = result.Streams.FirstOrDefault(value => value.StreamIndex == state.AudioStream.Index);
                 if (stream is not null) {
@@ -179,7 +182,22 @@ public sealed class ReplayGainTranscodeManager : ITranscodeManager {
             }
         }
 
+        if (config.NormalizeBeforeAnalysis && !config.PreserveDynamicRange) {
+            var fallbackFilter = CreateOnePassLoudnormFilter(config);
+            _logger.LogDebug(
+                "ReplayGain selected one-pass loudnorm fallback for {Path}, stream {StreamIndex}: no matching loudness analysis is available",
+                state.MediaPath, state.AudioStream.Index);
+            return fallbackFilter;
+        }
+
         return null;
+    }
+
+    internal static string CreateOnePassLoudnormFilter(PluginConfiguration config) {
+        return $"loudnorm=I={Format(config.LoudnormIntegratedLoudness)}" +
+               $":TP={Format(config.LoudnormTruePeak)}" +
+               $":LRA={Format(config.LoudnormLoudnessRange)}" +
+               ":linear=false";
     }
 
     private BaseItem? TryGetItem(StreamState state) {

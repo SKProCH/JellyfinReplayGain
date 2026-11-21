@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.ReplayGain.Configuration;
 using Jellyfin.Plugin.ReplayGain.Loudness;
 using Jellyfin.Plugin.ReplayGain.Loudnorm;
 using MediaBrowser.Common.Configuration;
@@ -23,6 +24,13 @@ public sealed class ReplayGainTranscodeManagerTests {
     public void CalculatePeakSafeGain_WhenTruePeakHasHeadroom_UsesLoudnessGain() {
         ReplayGainTranscodeManager.CalculatePeakSafeGain(-16, -1.5, -20, -10)
             .Should().BeApproximately(4, 0.001);
+    }
+
+    [Fact]
+    public void CreateOnePassLoudnormFilter_UsesTargetsWithoutMeasuredValues() {
+        var filter = ReplayGainTranscodeManager.CreateOnePassLoudnormFilter(new PluginConfiguration());
+
+        filter.Should().Be("loudnorm=I=-16:TP=-1.5:LRA=11:linear=false");
     }
 
     [Fact]

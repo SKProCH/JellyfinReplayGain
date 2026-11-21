@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.ReplayGain.Configuration;
 using Jellyfin.Plugin.ReplayGain.Loudness;
 using Jellyfin.Plugin.ReplayGain.Loudnorm;
 using MediaBrowser.Common.Configuration;
@@ -11,12 +12,48 @@ namespace Jellyfin.Plugin.ReplayGain.Tests.Playback;
 public sealed class ReplayGainPlaybackInfoFilterTests
 {
     [Fact]
-    public void RequiresNormalization_WhenLoudnessCacheIsMissing_ReturnsFalse()
+    public void RequiresNormalization_WhenLoudnessCacheIsMissing_UsesFallbackByDefault()
     {
-        var source = CreateAudioSource();
-        var filter = CreateFilter();
+        var path = Path.GetTempFileName();
+        try {
+            var source = CreateAudioSource(path);
+            var filter = CreateFilter();
 
-        filter.RequiresNormalization(source).Should().BeFalse();
+            filter.RequiresNormalization(source).Should().BeTrue();
+        }
+        finally {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void RequiresNormalization_WhenLoudnessCacheIsMissingAndDynamicRangeIsPreserved_ReturnsFalse()
+    {
+        var path = Path.GetTempFileName();
+        try {
+            var source = CreateAudioSource(path);
+            var filter = CreateFilter(preserveDynamicRange: true);
+
+            filter.RequiresNormalization(source).Should().BeFalse();
+        }
+        finally {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void RequiresNormalization_WhenLoudnessCacheIsMissingAndFallbackIsDisabled_ReturnsFalse()
+    {
+        var path = Path.GetTempFileName();
+        try {
+            var source = CreateAudioSource(path);
+            var filter = CreateFilter(normalizeBeforeAnalysis: false);
+
+            filter.RequiresNormalization(source).Should().BeFalse();
+        }
+        finally {
+            File.Delete(path);
+        }
     }
 
     [Fact]
@@ -51,18 +88,23 @@ public sealed class ReplayGainPlaybackInfoFilterTests
         source.SupportsTranscoding.Should().BeTrue();
     }
 
-    private static ReplayGainPlaybackInfoFilter CreateFilter()
+    private static ReplayGainPlaybackInfoFilter CreateFilter(bool preserveDynamicRange = false, bool normalizeBeforeAnalysis = true)
     {
         var applicationPaths = new Mock<IApplicationPaths>();
         applicationPaths.Setup(paths => paths.DataPath).Returns(Path.GetTempPath());
         return new ReplayGainPlaybackInfoFilter(
             new LoudnessCacheStore(applicationPaths.Object, NullLogger<LoudnessCacheStore>.Instance),
-            NullLogger<ReplayGainPlaybackInfoFilter>.Instance);
+            NullLogger<ReplayGainPlaybackInfoFilter>.Instance,
+            () => new PluginConfiguration {
+                PreserveDynamicRange = preserveDynamicRange,
+                NormalizeBeforeAnalysis = normalizeBeforeAnalysis
+            });
     }
 
-    private static MediaSourceInfo CreateAudioSource()
+    private static MediaSourceInfo CreateAudioSource(string? path = null)
     {
         return new MediaSourceInfo {
+            Path = path,
             SupportsDirectPlay = true,
             SupportsDirectStream = true,
             SupportsTranscoding = true,
